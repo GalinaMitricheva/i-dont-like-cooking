@@ -1,11 +1,22 @@
-from idlcooking.bot.planning import TelegramPlanningFacade
+from types import SimpleNamespace
+
+from idlcooking.bot.handlers import _resolve_message_language
 from idlcooking.bot.i18n import resolve_language, t
+from idlcooking.bot.planning import TelegramPlanningFacade
 
 
 def test_bot_language_defaults_to_english() -> None:
     assert resolve_language(None) == "en"
     assert resolve_language("ru") == "en"
     assert "weekly menu" in t("en", "start")
+
+
+def test_resolve_message_language_is_consistent_for_every_handler() -> None:
+    message_with_user = SimpleNamespace(from_user=SimpleNamespace(language_code="ru"))
+    message_without_user = SimpleNamespace(from_user=None)
+
+    assert _resolve_message_language(message_with_user) == resolve_language("ru")
+    assert _resolve_message_language(message_without_user) == resolve_language(None)
 
 
 def test_telegram_planning_facade_generates_and_persists_plan() -> None:
