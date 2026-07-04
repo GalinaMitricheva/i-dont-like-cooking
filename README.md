@@ -6,7 +6,7 @@ The service creates a weekly menu and shopping list on a configurable schedule, 
 
 ## Current Stage
 
-Product discovery and technical requirements.
+Initial engineering scaffold.
 
 Start with:
 
@@ -21,3 +21,63 @@ The recommended first version is not a standalone mobile app. It is a lightweigh
 - A local Ollama-based image recognition adapter can run on the user's machine for private refrigerator photo analysis.
 
 This keeps user setup minimal, avoids mobile app maintenance, and allows the service to start cheaply.
+
+## Repository Layout
+
+```text
+src/idlcooking/
+  api/          FastAPI app entrypoint
+  bot/          Telegram bot entrypoint and handlers
+  domain/       Pure scheduling, profile, planning, and shopping-list logic
+  services/     External adapters, starting with the local Ollama vision contract
+  scheduler.py  Scheduled job setup
+tests/          Unit tests for domain behavior
+```
+
+## Local Development
+
+Requirements:
+
+- Python 3.11+
+- A Telegram bot token for bot polling
+- Optional: local Ollama with a vision-capable model for the future fridge-photo adapter
+
+Create a virtual environment and install dependencies:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+Copy `.env.example` to `.env` and fill `TELEGRAM_BOT_TOKEN` when you want to run the bot.
+
+Run the backend API:
+
+```bash
+uvicorn idlcooking.api.main:app --reload
+```
+
+Health checks:
+
+- `GET /health`
+- `GET /ready`
+
+Run the Telegram bot:
+
+```bash
+python -m idlcooking.bot.main
+```
+
+Run tests:
+
+```bash
+pytest
+```
+
+## First Implemented Domain Rules
+
+- Weekly schedule calculation, defaulting to Saturday 09:00 in the configured timezone.
+- Optional calorie estimation using Mifflin-St Jeor when the user provides body metrics.
+- Deterministic recipe scoring that excludes allergies/restrictions/dislikes, rewards low effort, and prefers recipes using current inventory.
+- Shopping-list generation that marks already available ingredients.
