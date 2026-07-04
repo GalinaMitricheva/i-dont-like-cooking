@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.domain.feedback import CookedStatus, Rating, RecipeFeedback
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
@@ -31,6 +32,15 @@ _NUTRITION_GOAL_PREFIX = "onboarding:goal:"
 _SEX_PREFIX = "onboarding:sex:"
 _BODY_METRICS_YES = "onboarding:body_metrics:yes"
 _BODY_METRICS_NO = "onboarding:body_metrics:no"
+_FEEDBACK_PREFIX = "feedback:"
+
+_FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
+    "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
+    "neutral": (CookedStatus.COOKED, Rating.NEUTRAL, None, None),
+    "too_much_effort": (CookedStatus.COOKED, Rating.DISLIKED, "too_much_effort", None),
+    "too_expensive": (CookedStatus.COOKED, Rating.NEUTRAL, None, "too_expensive"),
+    "skipped": (CookedStatus.SKIPPED, Rating.NEUTRAL, None, None),
+}
 
 
 class OnboardingStates(StatesGroup):
@@ -48,6 +58,10 @@ class OnboardingStates(StatesGroup):
     body_metrics_weight = State()
     body_metrics_age = State()
     body_metrics_sex = State()
+
+
+class FeedbackStates(StatesGroup):
+    reviewing = State()
 
 
 def _telegram_user_id(message: Message) -> int:
@@ -174,6 +188,39 @@ def _body_metrics_sex_keyboard(language: str) -> InlineKeyboardMarkup:
         language,
         _SEX_PREFIX,
         (("male", "onboarding_sex_male"), ("female", "onboarding_sex_female")),
+    )
+
+
+def _feedback_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(language, "feedback_liked_button"),
+                    callback_data=f"{_FEEDBACK_PREFIX}liked",
+                ),
+                InlineKeyboardButton(
+                    text=t(language, "feedback_neutral_button"),
+                    callback_data=f"{_FEEDBACK_PREFIX}neutral",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t(language, "feedback_too_much_effort_button"),
+                    callback_data=f"{_FEEDBACK_PREFIX}too_much_effort",
+                ),
+                InlineKeyboardButton(
+                    text=t(language, "feedback_too_expensive_button"),
+                    callback_data=f"{_FEEDBACK_PREFIX}too_expensive",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t(language, "feedback_skipped_button"),
+                    callback_data=f"{_FEEDBACK_PREFIX}skipped",
+                ),
+            ],
+        ]
     )
 
 
@@ -554,6 +601,83 @@ async def profile(message: Message, planning_facade: TelegramPlanningFacade) -> 
             timezone=summary.timezone,
         )
     )
+
+
+async def _send_next_feedback_prompt(message: Message, state: FSMContext, language: str) -> None:
+    data = await state.get_data()
+    items: list[dict[str, str]] = data["feedback_items"]
+    index: int = data["feedback_index"]
+
+    if index >= len(items):
+        await state.clear()
+        await message.answer(t(language, "feedback_complete"))
+        return
+
+    await message.answer(
+        t(language, "feedback_prompt", title=items[index]["title"]),
+        reply_markup=_feedback_keyboard(language),
+    )
+
+
+@router.message(Command("feedback"))
+async def feedback(
+    message: Message, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    language = _resolve_message_language(message)
+    if not await _require_consent(message, planning_facade, language):
+        return
+
+    targets = planning_facade.get_latest_cycle_feedback_targets(_telegram_user_id(message))
+    if targets is None or not targets[1]:
+        await message.answer(t(language, "feedback_no_cycle"))
+        return
+
+    planning_cycle_id, items = targets
+    await state.set_state(FeedbackStates.reviewing)
+    await state.update_data(
+        feedback_planning_cycle_id=planning_cycle_id,
+        feedback_items=[{"title": item.title, "source_url": item.source_url} for item in items],
+        feedback_index=0,
+    )
+    await _send_next_feedback_prompt(message, state, language)
+
+
+@router.callback_query(FeedbackStates.reviewing, F.data.startswith(_FEEDBACK_PREFIX))
+async def feedback_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.data is None
+    ):
+        await callback.answer()
+        return
+
+    language = resolve_language(callback.from_user.language_code)
+    choice = callback.data.removeprefix(_FEEDBACK_PREFIX)
+    data = await state.get_data()
+    items: list[dict[str, str]] = data["feedback_items"]
+    index: int = data["feedback_index"]
+    item = items[index]
+
+    cooked_status, rating, effort_feedback, cost_feedback = _FEEDBACK_CHOICES[choice]
+    planning_facade.record_feedback(
+        callback.from_user.id,
+        data["feedback_planning_cycle_id"],
+        RecipeFeedback(
+            recipe_source_url=item["source_url"],
+            recipe_title=item["title"],
+            cooked_status=cooked_status,
+            rating=rating,
+            effort_feedback=effort_feedback,
+            cost_feedback=cost_feedback,
+        ),
+    )
+    await state.update_data(feedback_index=index + 1)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await _send_next_feedback_prompt(callback.message, state, language)
+    await callback.answer()
 
 
 @router.message(Command("fridge"))

@@ -80,6 +80,8 @@ class PlanningService:
         inventory: tuple[InventoryItem, ...] = (),
         days: int = 7,
         include_lunch_leftovers: bool = False,
+        liked_recipe_urls: frozenset[str] = frozenset(),
+        disliked_recipe_urls: frozenset[str] = frozenset(),
     ) -> GeneratedPlan:
         menu = select_weekly_menu(
             list(self.recipes),
@@ -87,6 +89,8 @@ class PlanningService:
             inventory,
             days=days,
             include_lunch_leftovers=include_lunch_leftovers,
+            liked_recipe_urls=liked_recipe_urls,
+            disliked_recipe_urls=disliked_recipe_urls,
         )
         shopping_list = build_shopping_list(menu, inventory)
         return GeneratedPlan(menu=menu, shopping_list=shopping_list)

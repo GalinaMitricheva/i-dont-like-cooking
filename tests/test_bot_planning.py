@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from idlcooking.bot.handlers import _parse_list_answer, _resolve_message_language
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.domain.feedback import CookedStatus, Rating, RecipeFeedback
 from idlcooking.domain.planning import RecipeCandidate
 from idlcooking.domain.profile import BudgetLevel, UserProfile
 from idlcooking.services.recipe_discovery import RecipeDiscoveryService
@@ -175,6 +176,67 @@ def test_telegram_planning_facade_saves_profile_from_onboarding() -> None:
     summary = facade.get_profile_summary(telegram_user_id=12345)
     assert summary.household_size == 3
     assert summary.cooking_effort_minutes == 15
+
+
+def test_telegram_planning_facade_has_no_feedback_targets_without_a_plan() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+
+    assert facade.get_latest_cycle_feedback_targets(telegram_user_id=1) is None
+
+
+def test_telegram_planning_facade_feedback_targets_deduplicate_lunch_leftovers() -> None:
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_lunch_leftovers=True)
+
+    targets = facade.get_latest_cycle_feedback_targets(telegram_user_id=1)
+
+    assert targets is not None
+    planning_cycle_id, items = targets
+    assert planning_cycle_id == 1
+    source_urls = [item.source_url for item in items]
+    assert len(source_urls) == len(set(source_urls))
+
+
+def test_telegram_planning_facade_feedback_excludes_disliked_recipe_from_next_plan() -> None:
+    recipe_a = RecipeCandidate(
+        title="Recipe A",
+        source_url="https://example.com/a",
+        ingredients=("a",),
+        active_time_minutes=5,
+    )
+    recipe_b = RecipeCandidate(
+        title="Recipe B",
+        source_url="https://example.com/b",
+        ingredients=("b",),
+        active_time_minutes=20,
+    )
+    discovery = RecipeDiscoveryService(source_urls=("https://example.com/a",))
+    discovery.discover = lambda: [recipe_a, recipe_b]  # type: ignore[method-assign]
+    facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
+
+    first = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, include_lunch_leftovers=False
+    )
+    assert "Recipe A" in first.menu_lines[0]
+
+    planning_cycle_id, _ = facade.get_latest_cycle_feedback_targets(telegram_user_id=1)
+    facade.record_feedback(
+        telegram_user_id=1,
+        planning_cycle_id=planning_cycle_id,
+        feedback=RecipeFeedback(
+            recipe_source_url="https://example.com/a",
+            recipe_title="Recipe A",
+            cooked_status=CookedStatus.COOKED,
+            rating=Rating.DISLIKED,
+            effort_feedback="too_much_effort",
+        ),
+    )
+
+    second = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, include_lunch_leftovers=False
+    )
+    assert all("Recipe A" not in line for line in second.menu_lines)
+    assert "Recipe B" in second.menu_lines[0]
 
 
 def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:

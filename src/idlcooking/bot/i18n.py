@@ -114,6 +114,14 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Start with /plan to get your first weekly menu and shopping list. If you want to "
             "account for food you already have, write:\n/plan rice, eggs, cucumber"
         ),
+        "feedback_no_cycle": "You don't have a recent plan to review yet. Try /plan first.",
+        "feedback_prompt": "How was {title}?",
+        "feedback_liked_button": "\U0001F44D Liked it",
+        "feedback_neutral_button": "\U0001F610 It was okay",
+        "feedback_too_much_effort_button": "\U0001F62B Too much effort",
+        "feedback_too_expensive_button": "\U0001F4B8 Too expensive",
+        "feedback_skipped_button": "\U0001F6AB Didn't cook it",
+        "feedback_complete": "Thanks for the feedback! I'll use it to improve your next plan.",
     }
 }
 

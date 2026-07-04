@@ -3,12 +3,14 @@ from dataclasses import dataclass
 from datetime import time
 
 from idlcooking.application.planning import SEED_RECIPES, PlanningService
+from idlcooking.domain.feedback import Rating, RecipeFeedback
 from idlcooking.domain.planning import InventoryItem, RecipeCandidate
 from idlcooking.domain.profile import UserProfile
 from idlcooking.domain.schedule import PlanningSchedule, weekday_name
 from idlcooking.services.recipe_discovery import RecipeDiscoveryService
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
+    FeedbackRepository,
     PlanningCycleRepository,
     ProfileRepository,
     RecipeRepository,
@@ -45,6 +47,12 @@ class TelegramScheduleSummary:
     timezone: str
 
 
+@dataclass(frozen=True)
+class TelegramFeedbackMenuItem:
+    title: str
+    source_url: str
+
+
 class TelegramPlanningFacade:
     def __init__(
         self,
@@ -59,6 +67,7 @@ class TelegramPlanningFacade:
         self.cycles = PlanningCycleRepository(self.connection)
         self.recipe_catalog = RecipeRepository(self.connection)
         self.recipe_discovery = recipe_discovery or RecipeDiscoveryService()
+        self.feedback = FeedbackRepository(self.connection)
 
     def ensure_user_defaults(
         self,
@@ -169,7 +178,12 @@ class TelegramPlanningFacade:
         )
         planning = PlanningService(recipes=self._recipe_pool())
         generated = planning.generate_weekly_plan(
-            profile, inventory, days=7, include_lunch_leftovers=include_lunch_leftovers
+            profile,
+            inventory,
+            days=7,
+            include_lunch_leftovers=include_lunch_leftovers,
+            liked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.LIKED),
+            disliked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.DISLIKED),
         )
         planning_cycle_id = self.cycles.save_generated_plan(user_id, generated)
 
@@ -187,3 +201,25 @@ class TelegramPlanningFacade:
             menu_lines=menu_lines,
             shopping_lines=shopping_lines,
         )
+
+    def get_latest_cycle_feedback_targets(
+        self, telegram_user_id: int
+    ) -> tuple[int, list[TelegramFeedbackMenuItem]] | None:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        result = self.cycles.get_latest_cycle_menu_items(user_id)
+        if result is None:
+            return None
+        planning_cycle_id, items = result
+        return planning_cycle_id, [
+            TelegramFeedbackMenuItem(title=item["title"], source_url=item["source_url"])
+            for item in items
+        ]
+
+    def record_feedback(
+        self,
+        telegram_user_id: int,
+        planning_cycle_id: int,
+        feedback: RecipeFeedback,
+    ) -> None:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        self.feedback.save_feedback(user_id, planning_cycle_id, feedback)

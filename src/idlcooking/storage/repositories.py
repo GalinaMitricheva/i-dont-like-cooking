@@ -3,6 +3,7 @@ import sqlite3
 from datetime import time
 
 from idlcooking.application.planning import GeneratedPlan
+from idlcooking.domain.feedback import Rating, RecipeFeedback
 from idlcooking.domain.planning import RecipeCandidate
 from idlcooking.domain.profile import (
     ActivityLevel,
@@ -317,6 +318,29 @@ class PlanningCycleRepository:
             "shopping_count": int(row["shopping_count"]),
         }
 
+    def get_latest_cycle_menu_items(
+        self, user_id: int
+    ) -> tuple[int, list[dict[str, str]]] | None:
+        cycle_row = self.connection.execute(
+            "SELECT id FROM planning_cycles WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if cycle_row is None:
+            return None
+
+        planning_cycle_id = int(cycle_row["id"])
+        item_rows = self.connection.execute(
+            """
+            SELECT DISTINCT title, source_url
+            FROM menu_items
+            WHERE planning_cycle_id = ?
+            ORDER BY id ASC
+            """,
+            (planning_cycle_id,),
+        ).fetchall()
+        items = [{"title": row["title"], "source_url": row["source_url"]} for row in item_rows]
+        return planning_cycle_id, items
+
 
 class RecipeRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -373,3 +397,47 @@ class RecipeRepository:
             )
             for row in rows
         ]
+
+
+class FeedbackRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def save_feedback(
+        self, user_id: int, planning_cycle_id: int, feedback: RecipeFeedback
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO feedback (
+                user_id,
+                planning_cycle_id,
+                recipe_source_url,
+                recipe_title,
+                cooked_status,
+                rating,
+                effort_feedback,
+                cost_feedback,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                planning_cycle_id,
+                feedback.recipe_source_url,
+                feedback.recipe_title,
+                feedback.cooked_status.value,
+                feedback.rating.value,
+                feedback.effort_feedback,
+                feedback.cost_feedback,
+                feedback.notes,
+            ),
+        )
+        self.connection.commit()
+
+    def get_recipe_urls_by_rating(self, user_id: int, rating: Rating) -> frozenset[str]:
+        rows = self.connection.execute(
+            "SELECT DISTINCT recipe_source_url FROM feedback WHERE user_id = ? AND rating = ?",
+            (user_id, rating.value),
+        ).fetchall()
+        return frozenset(row["recipe_source_url"] for row in rows)

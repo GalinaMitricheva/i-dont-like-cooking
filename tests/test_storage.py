@@ -1,6 +1,7 @@
 from datetime import time
 
 from idlcooking.application.planning import PlanningService
+from idlcooking.domain.feedback import CookedStatus, Rating, RecipeFeedback
 from idlcooking.domain.planning import InventoryItem, RecipeCandidate
 from idlcooking.domain.profile import (
     ActivityLevel,
@@ -12,6 +13,7 @@ from idlcooking.domain.profile import (
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
+    FeedbackRepository,
     PlanningCycleRepository,
     ProfileRepository,
     RecipeRepository,
@@ -151,3 +153,81 @@ def test_recipe_repository_caches_and_upserts_by_source_url() -> None:
     assert len(cached) == 1
     assert cached[0].title == "Fast rice (updated)"
     assert cached[0].ingredients == ("rice", "eggs", "soy sauce")
+
+
+def test_get_latest_cycle_menu_items_deduplicates_lunch_leftovers() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    cycles = PlanningCycleRepository(connection)
+    user_id = users.upsert_telegram_user(telegram_user_id=12345)
+
+    plan = PlanningService(
+        recipes=(
+            RecipeCandidate(
+                title="Fast rice",
+                source_url="https://example.com/fast-rice",
+                ingredients=("rice", "eggs"),
+                active_time_minutes=10,
+            ),
+        )
+    ).generate_weekly_plan(UserProfile(), days=2, include_lunch_leftovers=True)
+    cycles.save_generated_plan(user_id, plan)
+
+    result = cycles.get_latest_cycle_menu_items(user_id)
+
+    assert result is not None
+    planning_cycle_id, items = result
+    assert planning_cycle_id == 1
+    # The lunch leftover repeats the same dinner recipe; it must not appear twice.
+    assert items == [{"title": "Fast rice", "source_url": "https://example.com/fast-rice"}]
+
+
+def test_feedback_repository_saves_and_filters_by_rating() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    cycles = PlanningCycleRepository(connection)
+    feedback = FeedbackRepository(connection)
+    user_id = users.upsert_telegram_user(telegram_user_id=12345)
+    plan = PlanningService(
+        recipes=(
+            RecipeCandidate(
+                title="Fast rice",
+                source_url="https://example.com/fast-rice",
+                ingredients=("rice", "eggs"),
+                active_time_minutes=10,
+            ),
+        )
+    ).generate_weekly_plan(UserProfile(), days=1)
+    planning_cycle_id = cycles.save_generated_plan(user_id, plan)
+
+    feedback.save_feedback(
+        user_id,
+        planning_cycle_id,
+        RecipeFeedback(
+            recipe_source_url="https://example.com/fast-rice",
+            recipe_title="Fast rice",
+            cooked_status=CookedStatus.COOKED,
+            rating=Rating.LIKED,
+        ),
+    )
+    feedback.save_feedback(
+        user_id,
+        planning_cycle_id,
+        RecipeFeedback(
+            recipe_source_url="https://example.com/other",
+            recipe_title="Other dish",
+            cooked_status=CookedStatus.COOKED,
+            rating=Rating.DISLIKED,
+            effort_feedback="too_much_effort",
+        ),
+    )
+
+    assert feedback.get_recipe_urls_by_rating(user_id, Rating.LIKED) == frozenset(
+        {"https://example.com/fast-rice"}
+    )
+    assert feedback.get_recipe_urls_by_rating(user_id, Rating.DISLIKED) == frozenset(
+        {"https://example.com/other"}
+    )
+    assert feedback.get_recipe_urls_by_rating(user_id, Rating.NEUTRAL) == frozenset()

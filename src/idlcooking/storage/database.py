@@ -83,6 +83,22 @@ CREATE TABLE IF NOT EXISTS recipes (
     steps_summary TEXT NOT NULL DEFAULT '',
     fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    planning_cycle_id INTEGER NOT NULL,
+    recipe_source_url TEXT NOT NULL,
+    recipe_title TEXT NOT NULL,
+    cooked_status TEXT NOT NULL DEFAULT 'cooked',
+    rating TEXT NOT NULL DEFAULT 'neutral',
+    effort_feedback TEXT,
+    cost_feedback TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (planning_cycle_id) REFERENCES planning_cycles (id) ON DELETE CASCADE
+);
 """
 
 

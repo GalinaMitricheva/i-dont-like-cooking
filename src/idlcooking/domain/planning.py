@@ -61,8 +61,10 @@ def score_recipe(
     recipe: RecipeCandidate,
     profile: UserProfile,
     inventory: tuple[InventoryItem, ...] = (),
+    liked_recipe_urls: frozenset[str] = frozenset(),
+    disliked_recipe_urls: frozenset[str] = frozenset(),
 ) -> float:
-    if violates_profile(recipe, profile):
+    if violates_profile(recipe, profile) or recipe.source_url in disliked_recipe_urls:
         return float("-inf")
 
     score = 100.0
@@ -81,6 +83,9 @@ def score_recipe(
     if recipe.protein_grams is not None and recipe.protein_grams >= 25:
         score += 5
 
+    if recipe.source_url in liked_recipe_urls:
+        score += 20
+
     return score
 
 
@@ -90,11 +95,13 @@ def select_weekly_menu(
     inventory: tuple[InventoryItem, ...] = (),
     days: int = 7,
     include_lunch_leftovers: bool = False,
+    liked_recipe_urls: frozenset[str] = frozenset(),
+    disliked_recipe_urls: frozenset[str] = frozenset(),
 ) -> list[MenuItem]:
     scored = [
-        (score_recipe(recipe, profile, inventory), recipe)
+        (score_recipe(recipe, profile, inventory, liked_recipe_urls, disliked_recipe_urls), recipe)
         for recipe in recipes
-        if not violates_profile(recipe, profile)
+        if not violates_profile(recipe, profile) and recipe.source_url not in disliked_recipe_urls
     ]
     ranked = sorted(scored, key=lambda item: item[0], reverse=True)
     selected = ranked[:days]

@@ -102,3 +102,53 @@ def test_lunch_leftovers_do_not_duplicate_shopping_list_items() -> None:
     shopping_list = build_shopping_list(menu)
 
     assert [item.name for item in shopping_list] == ["eggs", "rice"]
+
+
+def test_disliked_recipes_are_excluded_from_selection() -> None:
+    profile = UserProfile()
+    liked_recipe = RecipeCandidate(
+        title="Lentil soup",
+        source_url="https://example.com/lentil-soup",
+        ingredients=("lentils", "carrot"),
+        active_time_minutes=15,
+    )
+    disliked_recipe = RecipeCandidate(
+        title="Rice eggs bowl",
+        source_url="https://example.com/rice-eggs",
+        ingredients=("rice", "eggs"),
+        active_time_minutes=12,
+    )
+
+    menu = select_weekly_menu(
+        [disliked_recipe, liked_recipe],
+        profile,
+        days=1,
+        disliked_recipe_urls=frozenset({disliked_recipe.source_url}),
+    )
+
+    assert [item.recipe.title for item in menu] == ["Lentil soup"]
+
+
+def test_liked_recipes_are_ranked_higher() -> None:
+    profile = UserProfile()
+    recipe_a = RecipeCandidate(
+        title="Rice eggs bowl",
+        source_url="https://example.com/rice-eggs",
+        ingredients=("rice", "eggs"),
+        active_time_minutes=12,
+    )
+    recipe_b = RecipeCandidate(
+        title="Lentil soup",
+        source_url="https://example.com/lentil-soup",
+        ingredients=("lentils", "carrot"),
+        active_time_minutes=12,
+    )
+
+    menu = select_weekly_menu(
+        [recipe_a, recipe_b],
+        profile,
+        days=1,
+        liked_recipe_urls=frozenset({recipe_b.source_url}),
+    )
+
+    assert menu[0].recipe.title == "Lentil soup"
