@@ -10,9 +10,20 @@ MESSAGES: dict[str, dict[str, str]] = {
             "/plan rice, eggs, cucumber"
         ),
         "plan": "Draft menu #{planning_cycle_id}:\n\n{menu}\n\nShopping list:\n{shopping}",
-        "schedule": (
-            "Default schedule: Saturday, 09:00. Schedule editing will be added next."
+        "schedule_current": (
+            "Current schedule: {weekday_name}, {at_time} ({timezone}).\n\n"
+            "To change it, send:\n/schedule <weekday> <HH:MM> [timezone]\n"
+            "Example: /schedule saturday 09:00 Europe/Berlin"
         ),
+        "schedule_usage": (
+            "To change your schedule, send:\n/schedule <weekday> <HH:MM> [timezone]\n"
+            "Example: /schedule saturday 09:00 Europe/Berlin"
+        ),
+        "schedule_invalid": (
+            "I could not understand that schedule. Use a weekday name, 24-hour time, and an "
+            "optional timezone, for example:\n/schedule saturday 09:00 Europe/Berlin"
+        ),
+        "schedule_updated": "Schedule updated: {weekday_name}, {at_time} ({timezone}).",
         "profile": (
             "Current profile:\n\n"
             "People: {household_size}\n"

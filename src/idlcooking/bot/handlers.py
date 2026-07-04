@@ -1,9 +1,13 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.domain.schedule import parse_weekday
 
 router = Router()
 
@@ -121,9 +125,63 @@ async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> Non
 
 
 @router.message(Command("schedule"))
-async def schedule(message: Message) -> None:
+async def schedule(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
-    await message.answer(t(language, "schedule"))
+    if not await _require_consent(message, planning_facade, language):
+        return
+
+    telegram_user_id = _telegram_user_id(message)
+    command_text = message.text or ""
+    args = command_text.removeprefix("/schedule").strip()
+
+    if not args:
+        summary = planning_facade.get_schedule_summary(telegram_user_id)
+        await message.answer(
+            t(
+                language,
+                "schedule_current",
+                weekday_name=summary.weekday_name,
+                at_time=summary.at_time,
+                timezone=summary.timezone,
+            )
+        )
+        return
+
+    parts = args.split()
+    if len(parts) not in (2, 3):
+        await message.answer(t(language, "schedule_usage"))
+        return
+
+    weekday_token, time_token, *timezone_parts = parts
+    timezone_name = (
+        timezone_parts[0]
+        if timezone_parts
+        else planning_facade.get_schedule_summary(telegram_user_id).timezone
+    )
+
+    try:
+        weekday = parse_weekday(weekday_token)
+        at_time = datetime.strptime(time_token, "%H:%M").time()
+        ZoneInfo(timezone_name)
+    except (ValueError, ZoneInfoNotFoundError):
+        await message.answer(t(language, "schedule_invalid"))
+        return
+
+    summary = planning_facade.update_schedule(
+        telegram_user_id,
+        weekday=weekday,
+        at_time=at_time,
+        timezone=timezone_name,
+    )
+    await message.answer(
+        t(
+            language,
+            "schedule_updated",
+            weekday_name=summary.weekday_name,
+            at_time=summary.at_time,
+            timezone=summary.timezone,
+        )
+    )
 
 
 @router.message(Command("profile"))

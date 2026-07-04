@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from datetime import time
 
 from idlcooking.application.planning import PlanningService
 from idlcooking.domain.planning import InventoryItem
 from idlcooking.domain.profile import UserProfile
-from idlcooking.domain.schedule import PlanningSchedule
+from idlcooking.domain.schedule import PlanningSchedule, weekday_name
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
     PlanningCycleRepository,
@@ -29,6 +30,14 @@ class TelegramProfileSummary:
     cooking_effort_minutes: int
     planning_weekday: int
     planning_time: str
+    timezone: str
+
+
+@dataclass(frozen=True)
+class TelegramScheduleSummary:
+    weekday: int
+    weekday_name: str
+    at_time: str
     timezone: str
 
 
@@ -88,6 +97,31 @@ class TelegramPlanningFacade:
             planning_time=schedule.at_time.strftime("%H:%M"),
             timezone=schedule.timezone,
         )
+
+    def get_schedule_summary(self, telegram_user_id: int) -> TelegramScheduleSummary:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        schedule = self.schedules.get_schedule(user_id) or PlanningSchedule()
+        return TelegramScheduleSummary(
+            weekday=schedule.weekday,
+            weekday_name=weekday_name(schedule.weekday),
+            at_time=schedule.at_time.strftime("%H:%M"),
+            timezone=schedule.timezone,
+        )
+
+    def update_schedule(
+        self,
+        telegram_user_id: int,
+        *,
+        weekday: int,
+        at_time: time,
+        timezone: str,
+    ) -> TelegramScheduleSummary:
+        user_id = self.ensure_user_defaults(telegram_user_id, timezone=timezone)
+        self.schedules.save_schedule(
+            user_id,
+            PlanningSchedule(weekday=weekday, at_time=at_time, timezone=timezone),
+        )
+        return self.get_schedule_summary(telegram_user_id)
 
     def generate_plan_from_text_inventory(
         self,

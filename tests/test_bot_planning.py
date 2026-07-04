@@ -1,3 +1,4 @@
+from datetime import time
 from types import SimpleNamespace
 
 from idlcooking.bot.handlers import _resolve_message_language
@@ -57,3 +58,31 @@ def test_telegram_planning_facade_tracks_consent() -> None:
     facade.record_consent(telegram_user_id=12345)
 
     assert facade.has_user_consented(telegram_user_id=12345) is True
+
+
+def test_telegram_planning_facade_returns_default_schedule_summary() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+
+    summary = facade.get_schedule_summary(telegram_user_id=12345)
+
+    assert summary.weekday == 5
+    assert summary.weekday_name == "Saturday"
+    assert summary.at_time == "09:00"
+    assert summary.timezone == "Europe/Berlin"
+
+
+def test_telegram_planning_facade_updates_schedule() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+
+    summary = facade.update_schedule(
+        telegram_user_id=12345,
+        weekday=2,
+        at_time=time(18, 30),
+        timezone="America/New_York",
+    )
+
+    assert summary.weekday == 2
+    assert summary.weekday_name == "Wednesday"
+    assert summary.at_time == "18:30"
+    assert summary.timezone == "America/New_York"
+    assert facade.get_schedule_summary(telegram_user_id=12345) == summary

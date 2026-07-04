@@ -2,6 +2,27 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+WEEKDAY_NAMES: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+
+def weekday_name(weekday: int) -> str:
+    return WEEKDAY_NAMES[weekday].capitalize()
+
+
+def parse_weekday(value: str) -> int:
+    normalized = value.strip().lower()
+    if normalized not in WEEKDAY_NAMES:
+        raise ValueError(f"Unknown weekday: {value!r}")
+    return WEEKDAY_NAMES.index(normalized)
+
 
 @dataclass(frozen=True)
 class PlanningSchedule:
