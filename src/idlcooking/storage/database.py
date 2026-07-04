@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS shopping_list_items (
     checked INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (planning_cycle_id) REFERENCES planning_cycles (id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS recipes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_url TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    ingredients_json TEXT NOT NULL DEFAULT '[]',
+    active_time_minutes INTEGER NOT NULL DEFAULT 20,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    protein_grams INTEGER,
+    steps_summary TEXT NOT NULL DEFAULT '',
+    fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 

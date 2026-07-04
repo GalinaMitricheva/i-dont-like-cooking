@@ -3,6 +3,7 @@ import sqlite3
 from datetime import time
 
 from idlcooking.application.planning import GeneratedPlan
+from idlcooking.domain.planning import RecipeCandidate
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
@@ -315,3 +316,60 @@ class PlanningCycleRepository:
             "menu_count": int(row["menu_count"]),
             "shopping_count": int(row["shopping_count"]),
         }
+
+
+class RecipeRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def upsert_recipe(self, recipe: RecipeCandidate) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO recipes (
+                source_url,
+                title,
+                ingredients_json,
+                active_time_minutes,
+                tags_json,
+                protein_grams,
+                steps_summary,
+                fetched_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(source_url) DO UPDATE SET
+                title = excluded.title,
+                ingredients_json = excluded.ingredients_json,
+                active_time_minutes = excluded.active_time_minutes,
+                tags_json = excluded.tags_json,
+                protein_grams = excluded.protein_grams,
+                steps_summary = excluded.steps_summary,
+                fetched_at = CURRENT_TIMESTAMP
+            """,
+            (
+                recipe.source_url,
+                recipe.title,
+                _json_tuple(recipe.ingredients),
+                recipe.active_time_minutes,
+                _json_tuple(recipe.tags),
+                recipe.protein_grams,
+                recipe.steps_summary,
+            ),
+        )
+        self.connection.commit()
+
+    def get_all_recipes(self) -> list[RecipeCandidate]:
+        rows = self.connection.execute(
+            "SELECT * FROM recipes ORDER BY id ASC",
+        ).fetchall()
+        return [
+            RecipeCandidate(
+                title=row["title"],
+                source_url=row["source_url"],
+                ingredients=_tuple_from_json(row["ingredients_json"]),
+                active_time_minutes=row["active_time_minutes"],
+                tags=_tuple_from_json(row["tags_json"]),
+                protein_grams=row["protein_grams"],
+                steps_summary=row["steps_summary"],
+            )
+            for row in rows
+        ]

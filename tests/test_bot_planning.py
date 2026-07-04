@@ -4,7 +4,16 @@ from types import SimpleNamespace
 from idlcooking.bot.handlers import _parse_list_answer, _resolve_message_language
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.domain.planning import RecipeCandidate
 from idlcooking.domain.profile import BudgetLevel, UserProfile
+from idlcooking.services.recipe_discovery import RecipeDiscoveryService
+
+
+def _offline_facade() -> TelegramPlanningFacade:
+    """A facade whose recipe discovery never touches the network, using seed recipes."""
+    return TelegramPlanningFacade(
+        "sqlite:///:memory:", recipe_discovery=RecipeDiscoveryService(source_urls=())
+    )
 
 
 def test_bot_language_defaults_to_english() -> None:
@@ -22,7 +31,7 @@ def test_resolve_message_language_is_consistent_for_every_handler() -> None:
 
 
 def test_telegram_planning_facade_generates_and_persists_plan() -> None:
-    facade = TelegramPlanningFacade("sqlite:///:memory:")
+    facade = _offline_facade()
 
     summary = facade.generate_plan_from_text_inventory(
         telegram_user_id=12345, inventory_text="rice"
@@ -37,7 +46,7 @@ def test_telegram_planning_facade_generates_and_persists_plan() -> None:
 
 
 def test_telegram_planning_facade_can_disable_lunch_leftovers() -> None:
-    facade = TelegramPlanningFacade("sqlite:///:memory:")
+    facade = _offline_facade()
 
     summary = facade.generate_plan_from_text_inventory(
         telegram_user_id=12345, inventory_text="rice", include_lunch_leftovers=False
@@ -45,6 +54,53 @@ def test_telegram_planning_facade_can_disable_lunch_leftovers() -> None:
 
     assert len(summary.menu_lines) == 7
     assert all("(lunch)" not in line for line in summary.menu_lines)
+
+
+def test_telegram_planning_facade_caches_discovered_recipes_and_reuses_them() -> None:
+    discovered_recipe = RecipeCandidate(
+        title="Discovered Soup",
+        source_url="https://example.com/soup",
+        ingredients=("lentils", "carrot"),
+        active_time_minutes=15,
+    )
+
+    def discover_once() -> list[RecipeCandidate]:
+        raise AssertionError("discovery should not run again once the cache is populated")
+
+    discovery = RecipeDiscoveryService(source_urls=("https://example.com/soup",))
+    discovery.discover = lambda: [discovered_recipe]  # type: ignore[method-assign]
+    facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
+
+    first = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, include_lunch_leftovers=False
+    )
+    assert any("Discovered Soup" in line for line in first.menu_lines)
+    assert [recipe.source_url for recipe in facade.recipe_catalog.get_all_recipes()] == [
+        "https://example.com/soup"
+    ]
+
+    # Second call must reuse the cache and never hit discovery again.
+    discovery.discover = discover_once  # type: ignore[method-assign]
+    second = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, include_lunch_leftovers=False
+    )
+    assert any("Discovered Soup" in line for line in second.menu_lines)
+
+
+def test_telegram_planning_facade_falls_back_to_seed_recipes_when_discovery_fails() -> None:
+    def failing_discover() -> list[RecipeCandidate]:
+        raise RuntimeError("network down")
+
+    discovery = RecipeDiscoveryService(source_urls=("https://example.com/broken",))
+    discovery.discover = failing_discover  # type: ignore[method-assign]
+    facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
+
+    summary = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, include_lunch_leftovers=False
+    )
+
+    assert len(summary.menu_lines) == 7
+    assert facade.recipe_catalog.get_all_recipes() == []
 
 
 def test_telegram_planning_facade_returns_default_profile_summary() -> None:

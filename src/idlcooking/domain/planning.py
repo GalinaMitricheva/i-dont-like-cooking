@@ -35,6 +35,7 @@ class RecipeCandidate:
     active_time_minutes: int
     tags: tuple[str, ...] = field(default_factory=tuple)
     protein_grams: int | None = None
+    steps_summary: str = ""
 
 
 @dataclass(frozen=True)

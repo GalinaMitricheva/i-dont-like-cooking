@@ -1,17 +1,22 @@
+import logging
 from dataclasses import dataclass
 from datetime import time
 
-from idlcooking.application.planning import PlanningService
-from idlcooking.domain.planning import InventoryItem
+from idlcooking.application.planning import SEED_RECIPES, PlanningService
+from idlcooking.domain.planning import InventoryItem, RecipeCandidate
 from idlcooking.domain.profile import UserProfile
 from idlcooking.domain.schedule import PlanningSchedule, weekday_name
+from idlcooking.services.recipe_discovery import RecipeDiscoveryService
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
     PlanningCycleRepository,
     ProfileRepository,
+    RecipeRepository,
     ScheduleRepository,
     UserRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 CONSENT_VERSION = "v1"
 
@@ -41,14 +46,19 @@ class TelegramScheduleSummary:
 
 
 class TelegramPlanningFacade:
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        recipe_discovery: RecipeDiscoveryService | None = None,
+    ) -> None:
         self.connection = connect(database_url)
         initialize_database(self.connection)
         self.users = UserRepository(self.connection)
         self.profiles = ProfileRepository(self.connection)
         self.schedules = ScheduleRepository(self.connection)
         self.cycles = PlanningCycleRepository(self.connection)
-        self.planning = PlanningService()
+        self.recipe_catalog = RecipeRepository(self.connection)
+        self.recipe_discovery = recipe_discovery or RecipeDiscoveryService()
 
     def ensure_user_defaults(
         self,
@@ -126,6 +136,24 @@ class TelegramPlanningFacade:
         )
         return self.get_schedule_summary(telegram_user_id)
 
+    def _recipe_pool(self) -> tuple[RecipeCandidate, ...]:
+        cached = self.recipe_catalog.get_all_recipes()
+        if cached:
+            return tuple(cached)
+
+        try:
+            discovered = self.recipe_discovery.discover()
+        except Exception:
+            logger.warning("Recipe discovery failed, falling back to seed recipes", exc_info=True)
+            discovered = []
+
+        if not discovered:
+            return SEED_RECIPES
+
+        for recipe in discovered:
+            self.recipe_catalog.upsert_recipe(recipe)
+        return tuple(discovered)
+
     def generate_plan_from_text_inventory(
         self,
         telegram_user_id: int,
@@ -139,7 +167,8 @@ class TelegramPlanningFacade:
             for name in inventory_text.replace(";", ",").split(",")
             if name.strip()
         )
-        generated = self.planning.generate_weekly_plan(
+        planning = PlanningService(recipes=self._recipe_pool())
+        generated = planning.generate_weekly_plan(
             profile, inventory, days=7, include_lunch_leftovers=include_lunch_leftovers
         )
         planning_cycle_id = self.cycles.save_generated_plan(user_id, generated)

@@ -14,6 +14,7 @@ from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
     PlanningCycleRepository,
     ProfileRepository,
+    RecipeRepository,
     ScheduleRepository,
     UserRepository,
 )
@@ -118,3 +119,35 @@ def test_user_consent_is_absent_until_recorded() -> None:
     users.record_consent(12345, "v1")
 
     assert users.get_consent_version(12345) == "v1"
+
+
+def test_recipe_repository_caches_and_upserts_by_source_url() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    recipes = RecipeRepository(connection)
+
+    recipe = RecipeCandidate(
+        title="Fast rice",
+        source_url="https://example.com/fast-rice",
+        ingredients=("rice", "eggs"),
+        active_time_minutes=10,
+        tags=("simple",),
+        protein_grams=20,
+        steps_summary="Cook rice, fry eggs, combine.",
+    )
+    recipes.upsert_recipe(recipe)
+
+    assert recipes.get_all_recipes() == [recipe]
+
+    updated = RecipeCandidate(
+        title="Fast rice (updated)",
+        source_url="https://example.com/fast-rice",
+        ingredients=("rice", "eggs", "soy sauce"),
+        active_time_minutes=12,
+    )
+    recipes.upsert_recipe(updated)
+
+    cached = recipes.get_all_recipes()
+    assert len(cached) == 1
+    assert cached[0].title == "Fast rice (updated)"
+    assert cached[0].ingredients == ("rice", "eggs", "soy sauce")
