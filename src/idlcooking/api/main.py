@@ -1,8 +1,17 @@
 from fastapi import FastAPI
 
+from idlcooking.application.planning import PlanningService
 from idlcooking import __version__
-from idlcooking.api.schemas import ProfilePayload, ProfileResponse
+from idlcooking.api.schemas import (
+    GeneratePlanPayload,
+    GeneratedPlanResponse,
+    MenuItemResponse,
+    ProfilePayload,
+    ProfileResponse,
+    ShoppingListItemResponse,
+)
 from idlcooking.config import get_settings
+from idlcooking.domain.planning import InventoryItem
 from idlcooking.domain.profile import ActivityLevel, NutritionGoal, UserProfile
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
@@ -21,6 +30,7 @@ def create_app() -> FastAPI:
     users = UserRepository(connection)
     profiles = ProfileRepository(connection)
     schedules = ScheduleRepository(connection)
+    planning = PlanningService()
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -65,6 +75,48 @@ def create_app() -> FastAPI:
             favorite_tags=list(profile.favorite_tags),
             activity_level=profile.activity_level.value,
             nutrition_goal=profile.nutrition_goal.value,
+        )
+
+    @app.post("/telegram-users/{telegram_user_id}/plan")
+    def generate_plan(
+        telegram_user_id: int,
+        payload: GeneratePlanPayload,
+    ) -> GeneratedPlanResponse:
+        user_id = users.upsert_telegram_user(telegram_user_id)
+        profile = profiles.get_profile(user_id) or UserProfile()
+        inventory = tuple(
+            InventoryItem(
+                name=item.name,
+                category=item.category,
+                urgency=item.urgency,
+                confidence=item.confidence,
+            )
+            for item in payload.inventory
+        )
+        generated = planning.generate_weekly_plan(profile, inventory, days=payload.days)
+        return GeneratedPlanResponse(
+            telegram_user_id=telegram_user_id,
+            menu=[
+                MenuItemResponse(
+                    day_index=item.day_index,
+                    meal_type=item.meal_type.value,
+                    title=item.recipe.title,
+                    source_url=item.recipe.source_url,
+                    active_time_minutes=item.recipe.active_time_minutes,
+                    score=item.score,
+                    reason=item.reason,
+                )
+                for item in generated.menu
+            ],
+            shopping_list=[
+                ShoppingListItemResponse(
+                    name=item.name,
+                    category=item.category,
+                    already_have=item.already_have,
+                    optional=item.optional,
+                )
+                for item in generated.shopping_list
+            ],
         )
 
     return app
