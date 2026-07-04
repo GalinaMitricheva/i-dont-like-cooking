@@ -103,3 +103,16 @@ def test_delete_user_cascades_to_profile_schedule_and_planning_cycles() -> None:
     assert profiles.get_profile(user_id) is None
     assert schedules.get_schedule(user_id) is None
     assert cycles.get_latest_cycle_summary(user_id) is None
+
+
+def test_user_consent_is_absent_until_recorded() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    users.upsert_telegram_user(telegram_user_id=12345)
+
+    assert users.get_consent_version(12345) is None
+
+    users.record_consent(12345, "v1")
+
+    assert users.get_consent_version(12345) == "v1"

@@ -89,6 +89,20 @@ class UserRepository:
         )
         self.connection.commit()
 
+    def get_consent_version(self, telegram_user_id: int) -> str | None:
+        row = self.connection.execute(
+            "SELECT consent_version FROM users WHERE telegram_user_id = ?",
+            (telegram_user_id,),
+        ).fetchone()
+        return row["consent_version"] if row else None
+
+    def record_consent(self, telegram_user_id: int, consent_version: str) -> None:
+        self.connection.execute(
+            "UPDATE users SET consent_version = ? WHERE telegram_user_id = ?",
+            (consent_version, telegram_user_id),
+        )
+        self.connection.commit()
+
 
 class ProfileRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:

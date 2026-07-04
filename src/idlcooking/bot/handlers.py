@@ -9,6 +9,8 @@ router = Router()
 
 _DELETE_CONFIRM_CALLBACK = "delete_my_data:confirm"
 _DELETE_CANCEL_CALLBACK = "delete_my_data:cancel"
+_CONSENT_AGREE_CALLBACK = "consent:agree"
+_CONSENT_DECLINE_CALLBACK = "consent:decline"
 
 
 def _telegram_user_id(message: Message) -> int:
@@ -39,16 +41,66 @@ def _delete_confirmation_keyboard(language: str) -> InlineKeyboardMarkup:
     )
 
 
+def _consent_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(language, "consent_agree_button"),
+                    callback_data=_CONSENT_AGREE_CALLBACK,
+                ),
+                InlineKeyboardButton(
+                    text=t(language, "consent_decline_button"),
+                    callback_data=_CONSENT_DECLINE_CALLBACK,
+                ),
+            ]
+        ]
+    )
+
+
+async def _require_consent(
+    message: Message, planning_facade: TelegramPlanningFacade, language: str
+) -> bool:
+    if planning_facade.has_user_consented(_telegram_user_id(message)):
+        return True
+    await message.answer(t(language, "consent_required"))
+    return False
+
+
 @router.message(Command("start"))
 async def start(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
-    planning_facade.ensure_user_defaults(_telegram_user_id(message), language=language)
-    await message.answer(t(language, "start"))
+    if planning_facade.has_user_consented(_telegram_user_id(message)):
+        await message.answer(t(language, "start"))
+        return
+    await message.answer(
+        t(language, "consent_prompt"),
+        reply_markup=_consent_keyboard(language),
+    )
+
+
+@router.callback_query(F.data.in_({_CONSENT_AGREE_CALLBACK, _CONSENT_DECLINE_CALLBACK}))
+async def consent_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+
+    language = resolve_language(callback.from_user.language_code)
+    if callback.data == _CONSENT_AGREE_CALLBACK:
+        planning_facade.record_consent(callback.from_user.id, language=language)
+        await callback.message.edit_text(t(language, "start"))
+    else:
+        await callback.message.edit_text(t(language, "consent_declined"))
+    await callback.answer()
 
 
 @router.message(Command("plan"))
 async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
+    if not await _require_consent(message, planning_facade, language):
+        return
     command_text = message.text or ""
     inventory_text = command_text.removeprefix("/plan").strip()
     summary = planning_facade.generate_plan_from_text_inventory(
@@ -77,6 +129,8 @@ async def schedule(message: Message) -> None:
 @router.message(Command("profile"))
 async def profile(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
+    if not await _require_consent(message, planning_facade, language):
+        return
     summary = planning_facade.get_profile_summary(_telegram_user_id(message))
     await message.answer(
         t(

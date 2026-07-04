@@ -13,6 +13,9 @@ from idlcooking.storage.repositories import (
 )
 
 
+CONSENT_VERSION = "v1"
+
+
 @dataclass(frozen=True)
 class TelegramPlanSummary:
     planning_cycle_id: int
@@ -59,6 +62,20 @@ class TelegramPlanningFacade:
 
     def delete_user_data(self, telegram_user_id: int) -> None:
         self.users.delete_user(telegram_user_id)
+
+    def has_user_consented(self, telegram_user_id: int) -> bool:
+        return self.users.get_consent_version(telegram_user_id) == CONSENT_VERSION
+
+    def record_consent(
+        self,
+        telegram_user_id: int,
+        *,
+        language: str = "en",
+        timezone: str = "Europe/Berlin",
+    ) -> int:
+        user_id = self.ensure_user_defaults(telegram_user_id, language=language, timezone=timezone)
+        self.users.record_consent(telegram_user_id, CONSENT_VERSION)
+        return user_id
 
     def get_profile_summary(self, telegram_user_id: int) -> TelegramProfileSummary:
         user_id = self.ensure_user_defaults(telegram_user_id)

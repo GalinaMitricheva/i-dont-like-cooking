@@ -32,6 +32,17 @@ MESSAGES: dict[str, dict[str, str]] = {
         "delete_my_data_cancel_button": "Cancel",
         "delete_my_data_done": "Your data has been deleted. Send /start any time to begin again.",
         "delete_my_data_cancelled": "Cancelled. Your data was not deleted.",
+        "consent_prompt": (
+            "Before we start: I store your profile, schedule, and planning history so I can build "
+            "weekly menus and shopping lists for you. You can delete this data any time with "
+            "/delete_my_data.\n\nDo you agree to this?"
+        ),
+        "consent_agree_button": "I agree",
+        "consent_decline_button": "Not now",
+        "consent_declined": (
+            "No problem. Nothing was stored. Send /start whenever you would like to begin."
+        ),
+        "consent_required": "Please send /start and agree to continue before using this command.",
     }
 }
 

@@ -47,3 +47,13 @@ def test_telegram_planning_facade_deletes_user_data() -> None:
     facade.delete_user_data(telegram_user_id=12345)
 
     assert facade.users.get_user_id_by_telegram_id(12345) is None
+
+
+def test_telegram_planning_facade_tracks_consent() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+
+    assert facade.has_user_consented(telegram_user_id=12345) is False
+
+    facade.record_consent(telegram_user_id=12345)
+
+    assert facade.has_user_consented(telegram_user_id=12345) is True
