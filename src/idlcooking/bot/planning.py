@@ -223,3 +223,30 @@ class TelegramPlanningFacade:
     ) -> None:
         user_id = self.ensure_user_defaults(telegram_user_id)
         self.feedback.save_feedback(user_id, planning_cycle_id, feedback)
+
+    def accept_latest_cycle(self, telegram_user_id: int) -> bool:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle_id = self.cycles.get_latest_cycle_id(user_id)
+        if cycle_id is None:
+            return False
+        self.cycles.mark_cycle_status(cycle_id, "accepted")
+        return True
+
+    def get_latest_shopping_list_lines(self, telegram_user_id: int) -> tuple[str, ...]:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle_id = self.cycles.get_latest_cycle_id(user_id)
+        if cycle_id is None:
+            return ()
+        items = self.cycles.get_shopping_list_lines(cycle_id)
+        return tuple(
+            f"- {item['name']}{' (already have)' if item['already_have'] else ''}"
+            for item in items
+        )
+
+    def mark_latest_shopping_list_bought(self, telegram_user_id: int) -> bool:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle_id = self.cycles.get_latest_cycle_id(user_id)
+        if cycle_id is None:
+            return False
+        self.cycles.mark_all_items_bought(cycle_id)
+        return True

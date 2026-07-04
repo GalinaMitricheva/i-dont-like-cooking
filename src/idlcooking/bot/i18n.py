@@ -9,7 +9,16 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Start with /plan. If you want to account for food you already have, write:\n"
             "/plan rice, eggs, cucumber"
         ),
-        "plan": "Draft menu #{planning_cycle_id}:\n\n{menu}\n\nShopping list:\n{shopping}",
+        "plan": "Draft menu #{planning_cycle_id}:\n\n{menu}",
+        "plan_shopping_list": "Shopping list:\n{shopping}",
+        "plan_no_shopping_list": "No shopping list yet — try /plan first.",
+        "plan_accept_button": "✅ Accept menu",
+        "plan_regenerate_button": "\U0001F504 Regenerate",
+        "plan_shopping_list_button": "\U0001F6D2 Show shopping list",
+        "plan_rate_button": "\U0001F4DD Rate your meals",
+        "plan_mark_bought_button": "✅ Mark all bought",
+        "plan_accepted_toast": "Menu accepted!",
+        "plan_marked_bought_toast": "Shopping list marked as bought.",
         "schedule_current": (
             "Current schedule: {weekday_name}, {at_time} ({timezone}).\n\n"
             "To change it, send:\n/schedule <weekday> <HH:MM> [timezone]\n"

@@ -231,3 +231,40 @@ def test_feedback_repository_saves_and_filters_by_rating() -> None:
         {"https://example.com/other"}
     )
     assert feedback.get_recipe_urls_by_rating(user_id, Rating.NEUTRAL) == frozenset()
+
+
+def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    cycles = PlanningCycleRepository(connection)
+    user_id = users.upsert_telegram_user(telegram_user_id=12345)
+
+    assert cycles.get_latest_cycle_id(user_id) is None
+
+    plan = PlanningService(
+        recipes=(
+            RecipeCandidate(
+                title="Fast rice",
+                source_url="https://example.com/fast-rice",
+                ingredients=("rice", "eggs"),
+                active_time_minutes=10,
+            ),
+        )
+    ).generate_weekly_plan(UserProfile(), inventory=(InventoryItem(name="rice"),), days=1)
+    planning_cycle_id = cycles.save_generated_plan(user_id, plan)
+
+    assert cycles.get_latest_cycle_id(user_id) == planning_cycle_id
+
+    cycles.mark_cycle_status(planning_cycle_id, "accepted")
+    assert cycles.get_latest_cycle_summary(user_id)["status"] == "accepted"
+
+    lines = cycles.get_shopping_list_lines(planning_cycle_id)
+    assert [(item["name"], item["already_have"], item["checked"]) for item in lines] == [
+        ("eggs", False, False),
+        ("rice", True, False),
+    ]
+
+    cycles.mark_all_items_bought(planning_cycle_id)
+    lines_after = cycles.get_shopping_list_lines(planning_cycle_id)
+    assert all(item["checked"] for item in lines_after)

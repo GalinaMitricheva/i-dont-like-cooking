@@ -33,6 +33,11 @@ _SEX_PREFIX = "onboarding:sex:"
 _BODY_METRICS_YES = "onboarding:body_metrics:yes"
 _BODY_METRICS_NO = "onboarding:body_metrics:no"
 _FEEDBACK_PREFIX = "feedback:"
+_PLAN_ACCEPT_CALLBACK = "plan:accept"
+_PLAN_REGENERATE_CALLBACK = "plan:regenerate"
+_PLAN_SHOPPING_LIST_CALLBACK = "plan:shopping_list"
+_PLAN_MARK_BOUGHT_CALLBACK = "plan:mark_bought"
+_PLAN_RATE_CALLBACK = "plan:rate"
 
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
     "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
@@ -218,6 +223,48 @@ def _feedback_keyboard(language: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text=t(language, "feedback_skipped_button"),
                     callback_data=f"{_FEEDBACK_PREFIX}skipped",
+                ),
+            ],
+        ]
+    )
+
+
+def _plan_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(language, "plan_accept_button"),
+                    callback_data=_PLAN_ACCEPT_CALLBACK,
+                ),
+                InlineKeyboardButton(
+                    text=t(language, "plan_regenerate_button"),
+                    callback_data=_PLAN_REGENERATE_CALLBACK,
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t(language, "plan_shopping_list_button"),
+                    callback_data=_PLAN_SHOPPING_LIST_CALLBACK,
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t(language, "plan_rate_button"),
+                    callback_data=_PLAN_RATE_CALLBACK,
+                ),
+            ],
+        ]
+    )
+
+
+def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(language, "plan_mark_bought_button"),
+                    callback_data=_PLAN_MARK_BOUGHT_CALLBACK,
                 ),
             ],
         ]
@@ -500,6 +547,19 @@ async def onboarding_body_metrics_sex(
     await callback.answer()
 
 
+async def _send_plan(
+    message: Message,
+    summary_menu_lines: tuple[str, ...],
+    cycle_id: int,
+    language: str,
+) -> None:
+    menu = "\n".join(summary_menu_lines)
+    await message.answer(
+        t(language, "plan", planning_cycle_id=cycle_id, menu=menu),
+        reply_markup=_plan_keyboard(language),
+    )
+
+
 @router.message(Command("plan"))
 async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
@@ -511,17 +571,79 @@ async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> Non
         _telegram_user_id(message),
         inventory_text=inventory_text,
     )
-    menu = "\n".join(summary.menu_lines)
-    shopping = "\n".join(summary.shopping_lines[:20])
-    await message.answer(
-        t(
-            language,
-            "plan",
-            planning_cycle_id=summary.planning_cycle_id,
-            menu=menu,
-            shopping=shopping,
-        )
+    await _send_plan(message, summary.menu_lines, summary.planning_cycle_id, language)
+
+
+@router.callback_query(F.data == _PLAN_ACCEPT_CALLBACK)
+async def plan_accept_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    planning_facade.accept_latest_cycle(callback.from_user.id)
+    await callback.answer(t(language, "plan_accepted_toast"))
+
+
+@router.callback_query(F.data == _PLAN_REGENERATE_CALLBACK)
+async def plan_regenerate_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    summary = planning_facade.generate_plan_from_text_inventory(callback.from_user.id)
+    await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
+    await callback.answer()
+
+
+@router.callback_query(F.data == _PLAN_SHOPPING_LIST_CALLBACK)
+async def plan_shopping_list_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    lines = planning_facade.get_latest_shopping_list_lines(callback.from_user.id)
+    if not lines:
+        await callback.answer(t(language, "plan_no_shopping_list"), show_alert=True)
+        return
+    shopping = "\n".join(lines[:30])
+    await callback.message.answer(
+        t(language, "plan_shopping_list", shopping=shopping),
+        reply_markup=_shopping_list_keyboard(language),
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == _PLAN_MARK_BOUGHT_CALLBACK)
+async def plan_mark_bought_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    planning_facade.mark_latest_shopping_list_bought(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer(t(language, "plan_marked_bought_toast"))
+
+
+@router.callback_query(F.data == _PLAN_RATE_CALLBACK)
+async def plan_rate_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    await _start_feedback_flow(
+        callback.message, planning_facade, state, callback.from_user.id, language
+    )
+    await callback.answer()
 
 
 @router.message(Command("schedule"))
@@ -619,15 +741,14 @@ async def _send_next_feedback_prompt(message: Message, state: FSMContext, langua
     )
 
 
-@router.message(Command("feedback"))
-async def feedback(
-    message: Message, planning_facade: TelegramPlanningFacade, state: FSMContext
+async def _start_feedback_flow(
+    message: Message,
+    planning_facade: TelegramPlanningFacade,
+    state: FSMContext,
+    telegram_user_id: int,
+    language: str,
 ) -> None:
-    language = _resolve_message_language(message)
-    if not await _require_consent(message, planning_facade, language):
-        return
-
-    targets = planning_facade.get_latest_cycle_feedback_targets(_telegram_user_id(message))
+    targets = planning_facade.get_latest_cycle_feedback_targets(telegram_user_id)
     if targets is None or not targets[1]:
         await message.answer(t(language, "feedback_no_cycle"))
         return
@@ -640,6 +761,17 @@ async def feedback(
         feedback_index=0,
     )
     await _send_next_feedback_prompt(message, state, language)
+
+
+@router.message(Command("feedback"))
+async def feedback(
+    message: Message, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    language = _resolve_message_language(message)
+    if not await _require_consent(message, planning_facade, language):
+        return
+    telegram_user_id = _telegram_user_id(message)
+    await _start_feedback_flow(message, planning_facade, state, telegram_user_id, language)
 
 
 @router.callback_query(FeedbackStates.reviewing, F.data.startswith(_FEEDBACK_PREFIX))

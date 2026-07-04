@@ -318,17 +318,20 @@ class PlanningCycleRepository:
             "shopping_count": int(row["shopping_count"]),
         }
 
-    def get_latest_cycle_menu_items(
-        self, user_id: int
-    ) -> tuple[int, list[dict[str, str]]] | None:
-        cycle_row = self.connection.execute(
+    def get_latest_cycle_id(self, user_id: int) -> int | None:
+        row = self.connection.execute(
             "SELECT id FROM planning_cycles WHERE user_id = ? ORDER BY id DESC LIMIT 1",
             (user_id,),
         ).fetchone()
-        if cycle_row is None:
+        return int(row["id"]) if row else None
+
+    def get_latest_cycle_menu_items(
+        self, user_id: int
+    ) -> tuple[int, list[dict[str, str]]] | None:
+        planning_cycle_id = self.get_latest_cycle_id(user_id)
+        if planning_cycle_id is None:
             return None
 
-        planning_cycle_id = int(cycle_row["id"])
         item_rows = self.connection.execute(
             """
             SELECT DISTINCT title, source_url
@@ -340,6 +343,39 @@ class PlanningCycleRepository:
         ).fetchall()
         items = [{"title": row["title"], "source_url": row["source_url"]} for row in item_rows]
         return planning_cycle_id, items
+
+    def mark_cycle_status(self, planning_cycle_id: int, status: str) -> None:
+        self.connection.execute(
+            "UPDATE planning_cycles SET status = ? WHERE id = ?",
+            (status, planning_cycle_id),
+        )
+        self.connection.commit()
+
+    def get_shopping_list_lines(self, planning_cycle_id: int) -> list[dict[str, object]]:
+        rows = self.connection.execute(
+            """
+            SELECT name, already_have, checked
+            FROM shopping_list_items
+            WHERE planning_cycle_id = ?
+            ORDER BY already_have ASC, name ASC
+            """,
+            (planning_cycle_id,),
+        ).fetchall()
+        return [
+            {
+                "name": row["name"],
+                "already_have": bool(row["already_have"]),
+                "checked": bool(row["checked"]),
+            }
+            for row in rows
+        ]
+
+    def mark_all_items_bought(self, planning_cycle_id: int) -> None:
+        self.connection.execute(
+            "UPDATE shopping_list_items SET checked = 1 WHERE planning_cycle_id = ?",
+            (planning_cycle_id,),
+        )
+        self.connection.commit()
 
 
 class RecipeRepository:

@@ -239,6 +239,32 @@ def test_telegram_planning_facade_feedback_excludes_disliked_recipe_from_next_pl
     assert "Recipe B" in second.menu_lines[0]
 
 
+def test_telegram_planning_facade_accept_latest_cycle() -> None:
+    facade = _offline_facade()
+
+    assert facade.accept_latest_cycle(telegram_user_id=1) is False
+
+    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_lunch_leftovers=False)
+
+    assert facade.accept_latest_cycle(telegram_user_id=1) is True
+
+
+def test_telegram_planning_facade_shopping_list_lines_and_mark_bought() -> None:
+    facade = _offline_facade()
+
+    assert facade.get_latest_shopping_list_lines(telegram_user_id=1) == ()
+    assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is False
+
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, inventory_text="rice", include_lunch_leftovers=False
+    )
+
+    lines = facade.get_latest_shopping_list_lines(telegram_user_id=1)
+    assert lines
+    assert any("already have" in line for line in lines)
+    assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is True
+
+
 def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:
     assert _parse_list_answer("none") == ()
     assert _parse_list_answer("Skip") == ()
