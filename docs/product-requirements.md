@@ -149,7 +149,7 @@ An adult who:
 
 ### 6.1 Telegram Interface
 
-- The bot must support Russian and English eventually; MVP can start with Russian.
+- The bot must start in English and keep message handling structured so more languages can be added later.
 - The bot must provide button-based choices where possible.
 - The bot must allow free text for allergies, dislikes, and corrections.
 - The bot must send scheduled reminders.
@@ -674,7 +674,7 @@ Mitigation:
 
 ## 14. Open Product Questions
 
-1. Should the MVP be Russian-only or bilingual from the start?
+1. Which additional languages should be added after the English MVP?
 2. Should calorie estimation be optional by default to avoid sensitive onboarding?
 3. Should the local Ollama adapter be required, or should manual inventory be the default fallback?
 4. Should planning cover all meals or start with dinners only?
@@ -685,7 +685,7 @@ Mitigation:
 ## 15. Proposed MVP Decision Defaults
 
 - Interface: Telegram bot.
-- Language: Russian first, English-ready architecture.
+- Language: English first, localization-ready architecture.
 - Planning cadence: Saturday morning by default, user-configurable.
 - First planning scope: dinners plus optional leftovers for lunches.
 - Inventory: fridge photo plus quick confirmation, manual fallback.

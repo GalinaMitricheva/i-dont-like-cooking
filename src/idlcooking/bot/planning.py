@@ -20,6 +20,15 @@ class TelegramPlanSummary:
     shopping_lines: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class TelegramProfileSummary:
+    household_size: int
+    cooking_effort_minutes: int
+    planning_weekday: int
+    planning_time: str
+    timezone: str
+
+
 class TelegramPlanningFacade:
     def __init__(self, database_url: str) -> None:
         self.connection = connect(database_url)
@@ -34,7 +43,7 @@ class TelegramPlanningFacade:
         self,
         telegram_user_id: int,
         *,
-        language: str = "ru",
+        language: str = "en",
         timezone: str = "Europe/Berlin",
     ) -> int:
         user_id = self.users.upsert_telegram_user(
@@ -47,6 +56,18 @@ class TelegramPlanningFacade:
         if self.schedules.get_schedule(user_id) is None:
             self.schedules.save_schedule(user_id, PlanningSchedule(timezone=timezone))
         return user_id
+
+    def get_profile_summary(self, telegram_user_id: int) -> TelegramProfileSummary:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        profile = self.profiles.get_profile(user_id) or UserProfile()
+        schedule = self.schedules.get_schedule(user_id) or PlanningSchedule()
+        return TelegramProfileSummary(
+            household_size=profile.household_size,
+            cooking_effort_minutes=profile.cooking_effort_minutes,
+            planning_weekday=schedule.weekday,
+            planning_time=schedule.at_time.strftime("%H:%M"),
+            timezone=schedule.timezone,
+        )
 
     def generate_plan_from_text_inventory(
         self,

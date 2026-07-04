@@ -2,6 +2,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
 
 router = Router()
@@ -16,13 +17,9 @@ def _telegram_user_id(message: Message) -> int:
 @router.message(Command("start"))
 async def start(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     user = message.from_user
-    language = user.language_code if user and user.language_code else "ru"
+    language = resolve_language(user.language_code if user else None)
     planning_facade.ensure_user_defaults(_telegram_user_id(message), language=language)
-    await message.answer(
-        "Привет! Я помогу собрать простое меню на неделю и список покупок.\n\n"
-        "Можно начать с /plan. Если хочешь учесть продукты дома, напиши так:\n"
-        "/plan рис, яйца, огурец"
-    )
+    await message.answer(t(language, "start"))
 
 
 @router.message(Command("plan"))
@@ -36,23 +33,37 @@ async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> Non
     menu = "\n".join(summary.menu_lines)
     shopping = "\n".join(summary.shopping_lines[:20])
     await message.answer(
-        f"Черновик меню #{summary.planning_cycle_id}:\n\n"
-        f"{menu}\n\n"
-        f"Список покупок:\n{shopping}"
+        t(
+            "en",
+            "plan",
+            planning_cycle_id=summary.planning_cycle_id,
+            menu=menu,
+            shopping=shopping,
+        )
     )
 
 
 @router.message(Command("schedule"))
 async def schedule(message: Message) -> None:
+    await message.answer(t("en", "schedule"))
+
+
+@router.message(Command("profile"))
+async def profile(message: Message, planning_facade: TelegramPlanningFacade) -> None:
+    summary = planning_facade.get_profile_summary(_telegram_user_id(message))
     await message.answer(
-        "Расписание по умолчанию: суббота, 09:00. Изменение расписания подключим следующим шагом."
+        t(
+            "en",
+            "profile",
+            household_size=summary.household_size,
+            cooking_effort_minutes=summary.cooking_effort_minutes,
+            planning_weekday=summary.planning_weekday,
+            planning_time=summary.planning_time,
+            timezone=summary.timezone,
+        )
     )
 
 
 @router.message(Command("fridge"))
 async def fridge(message: Message) -> None:
-    await message.answer(
-        "Пока можно перечислить продукты текстом в команде /plan, например:\n"
-        "/plan рис, яйца, огурец\n\n"
-        "Фото холодильника подключим через локальный Ollama adapter."
-    )
+    await message.answer(t("en", "fridge"))

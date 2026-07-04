@@ -54,7 +54,7 @@ class UserRepository:
         self,
         telegram_user_id: int,
         *,
-        language: str = "ru",
+        language: str = "en",
         timezone: str = "Europe/Berlin",
         consent_version: str | None = None,
     ) -> int:

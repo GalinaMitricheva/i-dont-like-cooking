@@ -22,6 +22,8 @@ The recommended first version is not a standalone mobile app. It is a lightweigh
 
 This keeps user setup minimal, avoids mobile app maintenance, and allows the service to start cheaply.
 
+The MVP bot speaks English first. Bot messages go through a small localization layer so additional languages can be added later without rewriting conversation handlers.
+
 ## Repository Layout
 
 ```text

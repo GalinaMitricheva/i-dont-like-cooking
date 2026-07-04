@@ -8,7 +8,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     telegram_user_id INTEGER NOT NULL UNIQUE,
-    language TEXT NOT NULL DEFAULT 'ru',
+    language TEXT NOT NULL DEFAULT 'en',
     timezone TEXT NOT NULL DEFAULT 'Europe/Berlin',
     consent_version TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
