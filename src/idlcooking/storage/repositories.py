@@ -291,9 +291,10 @@ class PlanningCycleRepository:
                 active_time_minutes,
                 score,
                 reason,
-                ingredients_json
+                ingredients_json,
+                steps_summary
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -306,6 +307,7 @@ class PlanningCycleRepository:
                     item.score,
                     item.reason,
                     _json_tuple(item.recipe.ingredients),
+                    item.recipe.steps_summary,
                 )
                 for item in plan.menu
             ],
@@ -390,6 +392,37 @@ class PlanningCycleRepository:
         ).fetchall()
         items = [{"title": row["title"], "source_url": row["source_url"]} for row in item_rows]
         return planning_cycle_id, items
+
+    def get_menu_items_by_day(self, planning_cycle_id: int) -> dict[int, list[dict[str, object]]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                day_index,
+                meal_type,
+                title,
+                source_url,
+                active_time_minutes,
+                ingredients_json,
+                steps_summary
+            FROM menu_items
+            WHERE planning_cycle_id = ?
+            ORDER BY id ASC
+            """,
+            (planning_cycle_id,),
+        ).fetchall()
+        grouped: dict[int, list[dict[str, object]]] = {}
+        for row in rows:
+            grouped.setdefault(row["day_index"], []).append(
+                {
+                    "meal_type": row["meal_type"],
+                    "title": row["title"],
+                    "source_url": row["source_url"],
+                    "active_time_minutes": row["active_time_minutes"],
+                    "ingredients": _tuple_from_json(row["ingredients_json"]),
+                    "steps_summary": row["steps_summary"],
+                }
+            )
+        return grouped
 
     def mark_cycle_status(self, planning_cycle_id: int, status: str) -> None:
         self.connection.execute(

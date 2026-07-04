@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
     score REAL NOT NULL,
     reason TEXT NOT NULL,
     ingredients_json TEXT NOT NULL DEFAULT '[]',
+    steps_summary TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (planning_cycle_id) REFERENCES planning_cycles (id) ON DELETE CASCADE
 );
 

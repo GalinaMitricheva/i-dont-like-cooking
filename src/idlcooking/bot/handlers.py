@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from idlcooking.bot.i18n import resolve_language, t
-from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.bot.planning import TelegramPlanningFacade, TelegramRecipeDetail
 from idlcooking.domain.feedback import CookedStatus, Rating, RecipeFeedback
 from idlcooking.domain.profile import (
     ActivityLevel,
@@ -39,6 +39,8 @@ _PLAN_SHOPPING_LIST_CALLBACK = "plan:shopping_list"
 _PLAN_MARK_BOUGHT_CALLBACK = "plan:mark_bought"
 _PLAN_RATE_CALLBACK = "plan:rate"
 _PLAN_MEALS_PREFIX = "plan:meals:"
+_PLAN_RECIPES_CALLBACK = "plan:recipes"
+_RECIPE_VIEW_PREFIX = "plan:recipe_view:"
 
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
     "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
@@ -253,6 +255,10 @@ def plan_keyboard(language: str) -> InlineKeyboardMarkup:
                     text=t(language, "plan_shopping_list_button"),
                     callback_data=_PLAN_SHOPPING_LIST_CALLBACK,
                 ),
+                InlineKeyboardButton(
+                    text=t(language, "plan_recipes_button"),
+                    callback_data=_PLAN_RECIPES_CALLBACK,
+                ),
             ],
             [
                 InlineKeyboardButton(
@@ -262,6 +268,25 @@ def plan_keyboard(language: str) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def _recipe_view_keyboard(language: str, day_index: int, total_days: int) -> InlineKeyboardMarkup:
+    row = []
+    if day_index > 0:
+        row.append(
+            InlineKeyboardButton(
+                text=t(language, "recipe_view_previous_button"),
+                callback_data=f"{_RECIPE_VIEW_PREFIX}{day_index - 1}",
+            )
+        )
+    if day_index < total_days - 1:
+        row.append(
+            InlineKeyboardButton(
+                text=t(language, "recipe_view_next_button"),
+                callback_data=f"{_RECIPE_VIEW_PREFIX}{day_index + 1}",
+            )
+        )
+    return InlineKeyboardMarkup(inline_keyboard=[row] if row else [])
 
 
 def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
@@ -713,6 +738,78 @@ async def plan_mark_bought_callback(
     planning_facade.mark_latest_shopping_list_bought(callback.from_user.id)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer(t(language, "plan_marked_bought_toast"))
+
+
+def _format_day_recipes(
+    language: str, day_index: int, items: list[TelegramRecipeDetail]
+) -> str:
+    lines = [t(language, "recipe_view_day_header", day=day_index + 1)]
+    for item in items:
+        lines.append("")
+        lines.append(
+            f"{item.meal_type.capitalize()}: {item.title} ({item.active_time_minutes} min)"
+        )
+        if item.ingredients:
+            lines.append("Ingredients: " + ", ".join(item.ingredients))
+        if item.steps_summary:
+            lines.append(item.steps_summary)
+        lines.append(f"Source: {item.source_url}")
+    return "\n".join(lines)
+
+
+async def _show_recipe_day(
+    message: Message,
+    planning_facade: TelegramPlanningFacade,
+    telegram_user_id: int,
+    day_index: int,
+    language: str,
+    *,
+    edit: bool,
+) -> None:
+    days = planning_facade.get_latest_recipe_details_by_day(telegram_user_id)
+    if not days:
+        await message.answer(t(language, "plan_no_recipes"))
+        return
+    day_index = max(0, min(day_index, len(days) - 1))
+    text = _format_day_recipes(language, day_index, days[day_index])
+    keyboard = _recipe_view_keyboard(language, day_index, len(days))
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard)
+    else:
+        await message.answer(text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == _PLAN_RECIPES_CALLBACK)
+async def plan_recipes_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    await _show_recipe_day(
+        callback.message, planning_facade, callback.from_user.id, 0, language, edit=False
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith(_RECIPE_VIEW_PREFIX))
+async def recipe_view_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.data is None
+    ):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    day_index = int(callback.data.removeprefix(_RECIPE_VIEW_PREFIX))
+    await _show_recipe_day(
+        callback.message, planning_facade, callback.from_user.id, day_index, language, edit=True
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data == _PLAN_RATE_CALLBACK)

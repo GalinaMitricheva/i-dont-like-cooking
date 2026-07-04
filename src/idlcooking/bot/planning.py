@@ -92,6 +92,16 @@ class TelegramFeedbackMenuItem:
     source_url: str
 
 
+@dataclass(frozen=True)
+class TelegramRecipeDetail:
+    meal_type: str
+    title: str
+    source_url: str
+    active_time_minutes: int
+    ingredients: tuple[str, ...]
+    steps_summary: str
+
+
 class TelegramPlanningFacade:
     def __init__(
         self,
@@ -337,3 +347,28 @@ class TelegramPlanningFacade:
             return False
         self.cycles.mark_all_items_bought(cycle_id)
         return True
+
+    def get_latest_recipe_details_by_day(
+        self, telegram_user_id: int
+    ) -> list[list[TelegramRecipeDetail]]:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle_id = self.cycles.get_latest_cycle_id(user_id)
+        if cycle_id is None:
+            return []
+        grouped = self.cycles.get_menu_items_by_day(cycle_id)
+        if not grouped:
+            return []
+        return [
+            [
+                TelegramRecipeDetail(
+                    meal_type=item["meal_type"],
+                    title=item["title"],
+                    source_url=item["source_url"],
+                    active_time_minutes=item["active_time_minutes"],
+                    ingredients=item["ingredients"],
+                    steps_summary=item["steps_summary"],
+                )
+                for item in grouped.get(day, [])
+            ]
+            for day in range(max(grouped) + 1)
+        ]

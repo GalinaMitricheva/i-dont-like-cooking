@@ -294,6 +294,23 @@ def test_telegram_planning_facade_shopping_list_lines_and_mark_bought() -> None:
     assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is True
 
 
+def test_telegram_planning_facade_returns_recipe_details_grouped_by_day() -> None:
+    facade = _offline_facade()
+
+    assert facade.get_latest_recipe_details_by_day(telegram_user_id=1) == []
+
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_lunch_leftovers=True
+    )
+
+    days = facade.get_latest_recipe_details_by_day(telegram_user_id=1)
+    assert len(days) == 2
+    assert [item.meal_type for item in days[0]] == ["dinner"]
+    assert [item.meal_type for item in days[1]] == ["lunch", "dinner"]
+    assert days[0][0].source_url.startswith("https://")
+    assert isinstance(days[0][0].ingredients, tuple)
+
+
 def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:
     assert _parse_list_answer("none") == ()
     assert _parse_list_answer("Skip") == ()

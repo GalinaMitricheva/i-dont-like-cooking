@@ -15,10 +15,15 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_accept_button": "✅ Accept menu",
         "plan_regenerate_button": "\U0001F504 Regenerate",
         "plan_shopping_list_button": "\U0001F6D2 Show shopping list",
+        "plan_recipes_button": "\U0001F4D6 View recipes",
         "plan_rate_button": "\U0001F4DD Rate your meals",
         "plan_mark_bought_button": "✅ Mark all bought",
         "plan_accepted_toast": "Menu accepted!",
         "plan_marked_bought_toast": "Shopping list marked as bought.",
+        "plan_no_recipes": "No recipes to show yet — try /plan first.",
+        "recipe_view_day_header": "Day {day}",
+        "recipe_view_previous_button": "◀ Previous day",
+        "recipe_view_next_button": "Next day ▶",
         "plan_days_prompt": (
             "How many days would you like to plan for? Reply with a number from 1 to 7."
         ),

@@ -270,6 +270,42 @@ def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
     assert all(item["checked"] for item in lines_after)
 
 
+def test_planning_cycle_repository_returns_menu_items_grouped_by_day() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    cycles = PlanningCycleRepository(connection)
+    user_id = users.upsert_telegram_user(telegram_user_id=12345)
+
+    plan = PlanningService(
+        recipes=(
+            RecipeCandidate(
+                title="Fast rice",
+                source_url="https://example.com/fast-rice",
+                ingredients=("rice", "eggs"),
+                active_time_minutes=10,
+                steps_summary="Cook rice. Fry eggs. Combine.",
+            ),
+            RecipeCandidate(
+                title="Lentil soup",
+                source_url="https://example.com/lentil-soup",
+                ingredients=("lentils", "carrot"),
+                active_time_minutes=15,
+            ),
+        )
+    ).generate_weekly_plan(UserProfile(), days=2, include_lunch_leftovers=True)
+    planning_cycle_id = cycles.save_generated_plan(user_id, plan)
+
+    by_day = cycles.get_menu_items_by_day(planning_cycle_id)
+
+    assert set(by_day.keys()) == {0, 1}
+    assert [item["meal_type"] for item in by_day[0]] == ["dinner"]
+    assert [item["meal_type"] for item in by_day[1]] == ["lunch", "dinner"]
+    day0_dinner = by_day[0][0]
+    assert day0_dinner["ingredients"] == ("rice", "eggs")
+    assert day0_dinner["steps_summary"] == "Cook rice. Fry eggs. Combine."
+
+
 def test_schedule_repository_lists_enabled_schedules_with_telegram_ids() -> None:
     connection = connect("sqlite:///:memory:")
     initialize_database(connection)
