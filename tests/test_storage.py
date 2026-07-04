@@ -1,5 +1,7 @@
 from datetime import time
 
+from idlcooking.application.planning import PlanningService
+from idlcooking.domain.planning import InventoryItem, RecipeCandidate
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
@@ -7,8 +9,6 @@ from idlcooking.domain.profile import (
     NutritionGoal,
     UserProfile,
 )
-from idlcooking.application.planning import PlanningService
-from idlcooking.domain.planning import InventoryItem, RecipeCandidate
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (

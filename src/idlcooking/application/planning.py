@@ -4,7 +4,6 @@ from idlcooking.domain.planning import InventoryItem, MenuItem, RecipeCandidate,
 from idlcooking.domain.profile import UserProfile
 from idlcooking.domain.shopping import ShoppingListItem, build_shopping_list
 
-
 SEED_RECIPES: tuple[RecipeCandidate, ...] = (
     RecipeCandidate(
         title="Rice eggs bowl",

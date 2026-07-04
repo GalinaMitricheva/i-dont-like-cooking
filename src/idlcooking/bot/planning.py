@@ -13,7 +13,6 @@ from idlcooking.storage.repositories import (
     UserRepository,
 )
 
-
 CONSENT_VERSION = "v1"
 
 

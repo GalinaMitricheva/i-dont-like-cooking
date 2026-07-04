@@ -1,15 +1,15 @@
 from fastapi import FastAPI
 
-from idlcooking.application.planning import PlanningService
 from idlcooking import __version__
 from idlcooking.api.schemas import (
-    GeneratePlanPayload,
     GeneratedPlanResponse,
+    GeneratePlanPayload,
     MenuItemResponse,
     ProfilePayload,
     ProfileResponse,
     ShoppingListItemResponse,
 )
+from idlcooking.application.planning import PlanningService
 from idlcooking.config import get_settings
 from idlcooking.domain.planning import InventoryItem
 from idlcooking.domain.profile import ActivityLevel, BudgetLevel, NutritionGoal, UserProfile

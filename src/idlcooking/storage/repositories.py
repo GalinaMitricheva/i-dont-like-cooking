@@ -185,7 +185,8 @@ class ScheduleRepository:
     def save_schedule(self, user_id: int, schedule: PlanningSchedule) -> None:
         self.connection.execute(
             """
-            INSERT INTO planning_schedules (user_id, weekday, at_time, timezone, enabled, updated_at)
+            INSERT INTO planning_schedules
+                (user_id, weekday, at_time, timezone, enabled, updated_at)
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
                 weekday = excluded.weekday,

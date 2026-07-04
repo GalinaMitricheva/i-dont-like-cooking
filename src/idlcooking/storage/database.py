@@ -1,7 +1,6 @@
 import sqlite3
 from pathlib import Path
 
-
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
 
