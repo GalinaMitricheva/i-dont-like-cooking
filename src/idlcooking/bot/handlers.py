@@ -38,7 +38,6 @@ _PLAN_REGENERATE_CALLBACK = "plan:regenerate"
 _PLAN_SHOPPING_LIST_CALLBACK = "plan:shopping_list"
 _PLAN_MARK_BOUGHT_CALLBACK = "plan:mark_bought"
 _PLAN_RATE_CALLBACK = "plan:rate"
-_PLAN_DAYS_PREFIX = "plan:days:"
 _PLAN_MEALS_PREFIX = "plan:meals:"
 
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
@@ -275,18 +274,6 @@ def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
                 ),
             ],
         ]
-    )
-
-
-def _plan_days_keyboard(language: str) -> InlineKeyboardMarkup:
-    return _enum_keyboard(
-        language,
-        _PLAN_DAYS_PREFIX,
-        (
-            ("3", "plan_days_3"),
-            ("5", "plan_days_5"),
-            ("7", "plan_days_7"),
-        ),
     )
 
 
@@ -601,29 +588,22 @@ async def plan(
     inventory_text = command_text.removeprefix("/plan").strip()
     await state.update_data(plan_inventory_text=inventory_text)
     await state.set_state(PlanStates.days)
-    await message.answer(
-        t(language, "plan_days_prompt"),
-        reply_markup=_plan_days_keyboard(language),
-    )
+    await message.answer(t(language, "plan_days_prompt"))
 
 
-@router.callback_query(PlanStates.days, F.data.startswith(_PLAN_DAYS_PREFIX))
-async def plan_days_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    if (
-        callback.from_user is None
-        or not isinstance(callback.message, Message)
-        or callback.data is None
-    ):
-        await callback.answer()
+@router.message(PlanStates.days)
+async def plan_days_message(message: Message, state: FSMContext) -> None:
+    language = _resolve_message_language(message)
+    value = (message.text or "").strip()
+    if not value.isdigit() or not (1 <= int(value) <= 7):
+        await message.answer(t(language, "plan_days_invalid"))
         return
-    language = resolve_language(callback.from_user.language_code)
-    await state.update_data(plan_days=int(callback.data.removeprefix(_PLAN_DAYS_PREFIX)))
+    await state.update_data(plan_days=int(value))
     await state.set_state(PlanStates.meals)
-    await callback.message.edit_text(
+    await message.answer(
         t(language, "plan_meals_prompt"),
         reply_markup=_plan_meals_keyboard(language),
     )
-    await callback.answer()
 
 
 @router.callback_query(PlanStates.meals, F.data.startswith(_PLAN_MEALS_PREFIX))
