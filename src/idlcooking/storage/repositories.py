@@ -270,16 +270,18 @@ class PlanningCycleRepository:
             INSERT INTO shopping_list_items (
                 planning_cycle_id,
                 name,
+                quantity,
                 category,
                 already_have,
                 optional
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     planning_cycle_id,
                     item.name,
+                    item.quantity,
                     item.category,
                     int(item.already_have),
                     int(item.optional),
@@ -354,17 +356,20 @@ class PlanningCycleRepository:
     def get_shopping_list_lines(self, planning_cycle_id: int) -> list[dict[str, object]]:
         rows = self.connection.execute(
             """
-            SELECT name, already_have, checked
+            SELECT name, quantity, category, already_have, optional, checked
             FROM shopping_list_items
             WHERE planning_cycle_id = ?
-            ORDER BY already_have ASC, name ASC
+            ORDER BY category ASC, already_have ASC, name ASC
             """,
             (planning_cycle_id,),
         ).fetchall()
         return [
             {
                 "name": row["name"],
+                "quantity": row["quantity"],
+                "category": row["category"],
                 "already_have": bool(row["already_have"]),
+                "optional": bool(row["optional"]),
                 "checked": bool(row["checked"]),
             }
             for row in rows

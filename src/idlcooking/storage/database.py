@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS shopping_list_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     planning_cycle_id INTEGER NOT NULL,
     name TEXT NOT NULL,
+    quantity TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT 'other',
     already_have INTEGER NOT NULL DEFAULT 0,
     optional INTEGER NOT NULL DEFAULT 0,

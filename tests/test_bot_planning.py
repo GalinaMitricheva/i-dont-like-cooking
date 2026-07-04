@@ -262,6 +262,8 @@ def test_telegram_planning_facade_shopping_list_lines_and_mark_bought() -> None:
     lines = facade.get_latest_shopping_list_lines(telegram_user_id=1)
     assert lines
     assert any("already have" in line for line in lines)
+    # Grouped by category: at least one category header line ending in ":".
+    assert any(line.endswith(":") for line in lines)
     assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is True
 
 

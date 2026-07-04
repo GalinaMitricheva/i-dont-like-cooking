@@ -22,6 +22,45 @@ logger = logging.getLogger(__name__)
 
 CONSENT_VERSION = "v1"
 
+_CATEGORY_LABELS: dict[str, str] = {
+    "produce": "Produce",
+    "protein": "Protein",
+    "dairy_and_eggs": "Dairy and eggs",
+    "grains_and_bakery": "Grains and bakery",
+    "pantry": "Pantry",
+    "frozen": "Frozen",
+    "spices_and_sauces": "Spices and sauces",
+    "other": "Other",
+}
+
+
+def _format_shopping_list(
+    items: list[tuple[str, str, str, bool, bool]],
+) -> tuple[str, ...]:
+    """Format (name, quantity, category, already_have, optional) tuples, grouped by category.
+
+    Items are expected to already be sorted by category (see build_shopping_list and
+    PlanningCycleRepository.get_shopping_list_lines), so a category header is only
+    emitted when the category changes from one item to the next.
+    """
+    lines: list[str] = []
+    current_category: str | None = None
+    for name, quantity, category, already_have, optional in items:
+        if category != current_category:
+            if current_category is not None:
+                lines.append("")
+            current_category = category
+            lines.append(f"{_CATEGORY_LABELS.get(category, category.title())}:")
+        prefix = f"{quantity} " if quantity else ""
+        if already_have:
+            suffix = " (already have)"
+        elif optional:
+            suffix = " (optional)"
+        else:
+            suffix = ""
+        lines.append(f"- {prefix}{name}{suffix}")
+    return tuple(lines)
+
 
 @dataclass(frozen=True)
 class TelegramPlanSummary:
@@ -192,9 +231,11 @@ class TelegramPlanningFacade:
             f"({item.recipe.active_time_minutes} min)"
             for item in generated.menu
         )
-        shopping_lines = tuple(
-            f"- {item.name}{' (already have)' if item.already_have else ''}"
-            for item in generated.shopping_list
+        shopping_lines = _format_shopping_list(
+            [
+                (item.name, item.quantity, item.category, item.already_have, item.optional)
+                for item in generated.shopping_list
+            ]
         )
         return TelegramPlanSummary(
             planning_cycle_id=planning_cycle_id,
@@ -238,9 +279,17 @@ class TelegramPlanningFacade:
         if cycle_id is None:
             return ()
         items = self.cycles.get_shopping_list_lines(cycle_id)
-        return tuple(
-            f"- {item['name']}{' (already have)' if item['already_have'] else ''}"
-            for item in items
+        return _format_shopping_list(
+            [
+                (
+                    item["name"],
+                    item["quantity"],
+                    item["category"],
+                    item["already_have"],
+                    item["optional"],
+                )
+                for item in items
+            ]
         )
 
     def mark_latest_shopping_list_bought(self, telegram_user_id: int) -> bool:

@@ -247,7 +247,7 @@ def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
             RecipeCandidate(
                 title="Fast rice",
                 source_url="https://example.com/fast-rice",
-                ingredients=("rice", "eggs"),
+                ingredients=("2 cups rice", "eggs"),
                 active_time_minutes=10,
             ),
         )
@@ -260,9 +260,9 @@ def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
     assert cycles.get_latest_cycle_summary(user_id)["status"] == "accepted"
 
     lines = cycles.get_shopping_list_lines(planning_cycle_id)
-    assert [(item["name"], item["already_have"], item["checked"]) for item in lines] == [
-        ("eggs", False, False),
-        ("rice", True, False),
+    assert [(item["name"], item["quantity"], item["already_have"]) for item in lines] == [
+        ("eggs", "", False),
+        ("rice", "2 cups", True),
     ]
 
     cycles.mark_all_items_bought(planning_cycle_id)

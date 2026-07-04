@@ -42,6 +42,7 @@ class MenuItemResponse(BaseModel):
 
 class ShoppingListItemResponse(BaseModel):
     name: str
+    quantity: str = ""
     category: str
     already_have: bool
     optional: bool

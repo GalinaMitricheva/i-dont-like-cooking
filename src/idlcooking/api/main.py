@@ -126,6 +126,7 @@ def create_app() -> FastAPI:
             shopping_list=[
                 ShoppingListItemResponse(
                     name=item.name,
+                    quantity=item.quantity,
                     category=item.category,
                     already_have=item.already_have,
                     optional=item.optional,
