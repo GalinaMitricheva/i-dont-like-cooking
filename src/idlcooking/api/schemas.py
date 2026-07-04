@@ -47,5 +47,6 @@ class ShoppingListItemResponse(BaseModel):
 
 class GeneratedPlanResponse(BaseModel):
     telegram_user_id: int
+    planning_cycle_id: int
     menu: list[MenuItemResponse]
     shopping_list: list[ShoppingListItemResponse]

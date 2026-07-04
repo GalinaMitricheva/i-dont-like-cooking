@@ -15,7 +15,12 @@ from idlcooking.domain.planning import InventoryItem
 from idlcooking.domain.profile import ActivityLevel, NutritionGoal, UserProfile
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
-from idlcooking.storage.repositories import ProfileRepository, ScheduleRepository, UserRepository
+from idlcooking.storage.repositories import (
+    PlanningCycleRepository,
+    ProfileRepository,
+    ScheduleRepository,
+    UserRepository,
+)
 
 
 def create_app() -> FastAPI:
@@ -30,6 +35,7 @@ def create_app() -> FastAPI:
     users = UserRepository(connection)
     profiles = ProfileRepository(connection)
     schedules = ScheduleRepository(connection)
+    cycles = PlanningCycleRepository(connection)
     planning = PlanningService()
 
     @app.get("/health")
@@ -94,8 +100,10 @@ def create_app() -> FastAPI:
             for item in payload.inventory
         )
         generated = planning.generate_weekly_plan(profile, inventory, days=payload.days)
+        planning_cycle_id = cycles.save_generated_plan(user_id, generated)
         return GeneratedPlanResponse(
             telegram_user_id=telegram_user_id,
+            planning_cycle_id=planning_cycle_id,
             menu=[
                 MenuItemResponse(
                     day_index=item.day_index,

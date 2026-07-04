@@ -2,6 +2,7 @@ import json
 import sqlite3
 from datetime import time
 
+from idlcooking.application.planning import GeneratedPlan
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
@@ -192,3 +193,98 @@ class ScheduleRepository:
             timezone=row["timezone"],
             enabled=bool(row["enabled"]),
         )
+
+
+class PlanningCycleRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def save_generated_plan(self, user_id: int, plan: GeneratedPlan) -> int:
+        cursor = self.connection.execute(
+            "INSERT INTO planning_cycles (user_id, status) VALUES (?, 'generated')",
+            (user_id,),
+        )
+        planning_cycle_id = int(cursor.lastrowid)
+
+        self.connection.executemany(
+            """
+            INSERT INTO menu_items (
+                planning_cycle_id,
+                day_index,
+                meal_type,
+                title,
+                source_url,
+                active_time_minutes,
+                score,
+                reason,
+                ingredients_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    planning_cycle_id,
+                    item.day_index,
+                    item.meal_type.value,
+                    item.recipe.title,
+                    item.recipe.source_url,
+                    item.recipe.active_time_minutes,
+                    item.score,
+                    item.reason,
+                    _json_tuple(item.recipe.ingredients),
+                )
+                for item in plan.menu
+            ],
+        )
+        self.connection.executemany(
+            """
+            INSERT INTO shopping_list_items (
+                planning_cycle_id,
+                name,
+                category,
+                already_have,
+                optional
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    planning_cycle_id,
+                    item.name,
+                    item.category,
+                    int(item.already_have),
+                    int(item.optional),
+                )
+                for item in plan.shopping_list
+            ],
+        )
+        self.connection.commit()
+        return planning_cycle_id
+
+    def get_latest_cycle_summary(self, user_id: int) -> dict[str, int | str] | None:
+        row = self.connection.execute(
+            """
+            SELECT
+                planning_cycles.id,
+                planning_cycles.status,
+                COUNT(DISTINCT menu_items.id) AS menu_count,
+                COUNT(DISTINCT shopping_list_items.id) AS shopping_count
+            FROM planning_cycles
+            LEFT JOIN menu_items ON menu_items.planning_cycle_id = planning_cycles.id
+            LEFT JOIN shopping_list_items
+                ON shopping_list_items.planning_cycle_id = planning_cycles.id
+            WHERE planning_cycles.user_id = ?
+            GROUP BY planning_cycles.id
+            ORDER BY planning_cycles.id DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": int(row["id"]),
+            "status": row["status"],
+            "menu_count": int(row["menu_count"]),
+            "shopping_count": int(row["shopping_count"]),
+        }
