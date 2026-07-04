@@ -17,6 +17,12 @@ class NutritionGoal(StrEnum):
     REDUCE_WASTE = "reduce_waste"
 
 
+class BudgetLevel(StrEnum):
+    LOW = "low"
+    MODERATE = "moderate"
+    FLEXIBLE = "flexible"
+
+
 @dataclass(frozen=True)
 class BodyMetrics:
     height_cm: int
@@ -33,6 +39,7 @@ class UserProfile:
     hard_restrictions: tuple[str, ...] = field(default_factory=tuple)
     disliked_ingredients: tuple[str, ...] = field(default_factory=tuple)
     favorite_tags: tuple[str, ...] = field(default_factory=tuple)
+    budget_level: BudgetLevel = BudgetLevel.MODERATE
     activity_level: ActivityLevel = ActivityLevel.LIGHT
     nutrition_goal: NutritionGoal = NutritionGoal.MAINTAIN
     body_metrics: BodyMetrics | None = None

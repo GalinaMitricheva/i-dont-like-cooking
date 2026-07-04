@@ -54,6 +54,66 @@ MESSAGES: dict[str, dict[str, str]] = {
             "No problem. Nothing was stored. Send /start whenever you would like to begin."
         ),
         "consent_required": "Please send /start and agree to continue before using this command.",
+        "onboarding_household_size_prompt": (
+            "How many people are you usually cooking for? Reply with a number from 1 to 12."
+        ),
+        "onboarding_household_size_invalid": "Please reply with a whole number from 1 to 12.",
+        "onboarding_cooking_effort_prompt": (
+            "How much active cooking time do you want on a typical day?"
+        ),
+        "onboarding_effort_minimal": "Almost no cooking",
+        "onboarding_effort_15": "15 minutes",
+        "onboarding_effort_30": "30 minutes",
+        "onboarding_effort_batch": "Batch cooking is okay",
+        "onboarding_allergies_prompt": (
+            "Any allergies I should avoid? List them separated by commas, or reply 'none'."
+        ),
+        "onboarding_hard_restrictions_prompt": (
+            "Any hard dietary restrictions, such as vegetarian, halal, or kosher? List them "
+            "separated by commas, or reply 'none'."
+        ),
+        "onboarding_disliked_ingredients_prompt": (
+            "Any ingredients you dislike? List them separated by commas, or reply 'none'."
+        ),
+        "onboarding_favorite_tags_prompt": (
+            "Any favorite cuisines or dishes you always enjoy? List them separated by commas, "
+            "or reply 'skip'."
+        ),
+        "onboarding_budget_level_prompt": "How budget-sensitive should meal choices be?",
+        "onboarding_budget_low": "Keep costs low",
+        "onboarding_budget_moderate": "Moderate",
+        "onboarding_budget_flexible": "Budget is flexible",
+        "onboarding_activity_level_prompt": "What is your typical activity level?",
+        "onboarding_activity_sedentary": "Sedentary",
+        "onboarding_activity_light": "Light",
+        "onboarding_activity_moderate": "Moderate",
+        "onboarding_activity_active": "Active",
+        "onboarding_nutrition_goal_prompt": "What is your main goal?",
+        "onboarding_goal_maintain": "Maintain weight",
+        "onboarding_goal_lose": "Lose weight",
+        "onboarding_goal_gain": "Gain weight",
+        "onboarding_goal_eat_regularly": "Eat more regularly",
+        "onboarding_goal_reduce_waste": "Reduce food waste",
+        "onboarding_body_metrics_choice_prompt": (
+            "Want approximate calorie targets? I can estimate them from your height, weight, "
+            "age, and sex. This is optional and only used for the estimate."
+        ),
+        "onboarding_body_metrics_yes": "Add body metrics",
+        "onboarding_body_metrics_no": "Skip",
+        "onboarding_body_metrics_height_prompt": "Height in centimeters?",
+        "onboarding_body_metrics_weight_prompt": "Weight in kilograms?",
+        "onboarding_body_metrics_age_prompt": "Age in years?",
+        "onboarding_body_metrics_sex_prompt": (
+            "Sex, used only for the calorie formula?"
+        ),
+        "onboarding_sex_male": "Male",
+        "onboarding_sex_female": "Female",
+        "onboarding_number_invalid": "Please reply with a valid positive number.",
+        "onboarding_complete": (
+            "Thanks! Your profile is saved.\n\n"
+            "Start with /plan to get your first weekly menu and shopping list. If you want to "
+            "account for food you already have, write:\n/plan rice, eggs, cucumber"
+        ),
     }
 }
 

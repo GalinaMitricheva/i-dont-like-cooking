@@ -6,6 +6,7 @@ from idlcooking.application.planning import GeneratedPlan
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
+    BudgetLevel,
     NutritionGoal,
     UserProfile,
 )
@@ -119,12 +120,13 @@ class ProfileRepository:
                 hard_restrictions_json,
                 disliked_ingredients_json,
                 favorite_tags_json,
+                budget_level,
                 activity_level,
                 nutrition_goal,
                 body_metrics_json,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
                 household_size = excluded.household_size,
                 cooking_effort_minutes = excluded.cooking_effort_minutes,
@@ -132,6 +134,7 @@ class ProfileRepository:
                 hard_restrictions_json = excluded.hard_restrictions_json,
                 disliked_ingredients_json = excluded.disliked_ingredients_json,
                 favorite_tags_json = excluded.favorite_tags_json,
+                budget_level = excluded.budget_level,
                 activity_level = excluded.activity_level,
                 nutrition_goal = excluded.nutrition_goal,
                 body_metrics_json = excluded.body_metrics_json,
@@ -145,6 +148,7 @@ class ProfileRepository:
                 _json_tuple(profile.hard_restrictions),
                 _json_tuple(profile.disliked_ingredients),
                 _json_tuple(profile.favorite_tags),
+                profile.budget_level.value,
                 profile.activity_level.value,
                 profile.nutrition_goal.value,
                 _body_metrics_to_json(profile.body_metrics),
@@ -167,6 +171,7 @@ class ProfileRepository:
             hard_restrictions=_tuple_from_json(row["hard_restrictions_json"]),
             disliked_ingredients=_tuple_from_json(row["disliked_ingredients_json"]),
             favorite_tags=_tuple_from_json(row["favorite_tags_json"]),
+            budget_level=BudgetLevel(row["budget_level"]),
             activity_level=ActivityLevel(row["activity_level"]),
             nutrition_goal=NutritionGoal(row["nutrition_goal"]),
             body_metrics=_body_metrics_from_json(row["body_metrics_json"]),

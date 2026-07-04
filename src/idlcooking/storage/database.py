@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     hard_restrictions_json TEXT NOT NULL DEFAULT '[]',
     disliked_ingredients_json TEXT NOT NULL DEFAULT '[]',
     favorite_tags_json TEXT NOT NULL DEFAULT '[]',
+    budget_level TEXT NOT NULL DEFAULT 'moderate',
     activity_level TEXT NOT NULL DEFAULT 'light',
     nutrition_goal TEXT NOT NULL DEFAULT 'maintain',
     body_metrics_json TEXT,

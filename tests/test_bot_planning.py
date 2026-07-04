@@ -1,9 +1,10 @@
 from datetime import time
 from types import SimpleNamespace
 
-from idlcooking.bot.handlers import _resolve_message_language
+from idlcooking.bot.handlers import _parse_list_answer, _resolve_message_language
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
+from idlcooking.domain.profile import BudgetLevel, UserProfile
 
 
 def test_bot_language_defaults_to_english() -> None:
@@ -86,3 +87,26 @@ def test_telegram_planning_facade_updates_schedule() -> None:
     assert summary.at_time == "18:30"
     assert summary.timezone == "America/New_York"
     assert facade.get_schedule_summary(telegram_user_id=12345) == summary
+
+
+def test_telegram_planning_facade_saves_profile_from_onboarding() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+    profile = UserProfile(
+        household_size=3,
+        cooking_effort_minutes=15,
+        allergies=("peanut",),
+        budget_level=BudgetLevel.LOW,
+    )
+
+    facade.save_profile(telegram_user_id=12345, profile=profile)
+
+    summary = facade.get_profile_summary(telegram_user_id=12345)
+    assert summary.household_size == 3
+    assert summary.cooking_effort_minutes == 15
+
+
+def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:
+    assert _parse_list_answer("none") == ()
+    assert _parse_list_answer("Skip") == ()
+    assert _parse_list_answer("") == ()
+    assert _parse_list_answer("peanut, shellfish;  soy ") == ("peanut", "shellfish", "soy")

@@ -3,6 +3,7 @@ from datetime import time
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
+    BudgetLevel,
     NutritionGoal,
     UserProfile,
 )
@@ -33,6 +34,7 @@ def test_user_profile_and_schedule_round_trip() -> None:
         hard_restrictions=("pork",),
         disliked_ingredients=("cilantro",),
         favorite_tags=("rice", "simple"),
+        budget_level=BudgetLevel.LOW,
         activity_level=ActivityLevel.MODERATE,
         nutrition_goal=NutritionGoal.REDUCE_WASTE,
         body_metrics=BodyMetrics(height_cm=170, weight_kg=70, age=35, sex="female"),

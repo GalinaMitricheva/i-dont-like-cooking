@@ -1,6 +1,7 @@
 from idlcooking.domain.profile import (
     ActivityLevel,
     BodyMetrics,
+    BudgetLevel,
     NutritionGoal,
     UserProfile,
     estimate_daily_calories,
@@ -9,6 +10,10 @@ from idlcooking.domain.profile import (
 
 def test_estimate_daily_calories_is_optional_without_body_metrics() -> None:
     assert estimate_daily_calories(UserProfile()) is None
+
+
+def test_user_profile_defaults_to_moderate_budget() -> None:
+    assert UserProfile().budget_level == BudgetLevel.MODERATE
 
 
 def test_estimate_daily_calories_applies_goal_adjustment() -> None:

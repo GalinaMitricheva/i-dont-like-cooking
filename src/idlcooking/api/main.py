@@ -12,7 +12,7 @@ from idlcooking.api.schemas import (
 )
 from idlcooking.config import get_settings
 from idlcooking.domain.planning import InventoryItem
-from idlcooking.domain.profile import ActivityLevel, NutritionGoal, UserProfile
+from idlcooking.domain.profile import ActivityLevel, BudgetLevel, NutritionGoal, UserProfile
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
 from idlcooking.storage.repositories import (
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
             hard_restrictions=tuple(payload.hard_restrictions),
             disliked_ingredients=tuple(payload.disliked_ingredients),
             favorite_tags=tuple(payload.favorite_tags),
+            budget_level=BudgetLevel(payload.budget_level),
             activity_level=ActivityLevel(payload.activity_level),
             nutrition_goal=NutritionGoal(payload.nutrition_goal),
         )
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
             hard_restrictions=list(profile.hard_restrictions),
             disliked_ingredients=list(profile.disliked_ingredients),
             favorite_tags=list(profile.favorite_tags),
+            budget_level=profile.budget_level.value,
             activity_level=profile.activity_level.value,
             nutrition_goal=profile.nutrition_goal.value,
         )

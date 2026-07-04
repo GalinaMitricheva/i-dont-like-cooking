@@ -86,6 +86,10 @@ class TelegramPlanningFacade:
         self.users.record_consent(telegram_user_id, CONSENT_VERSION)
         return user_id
 
+    def save_profile(self, telegram_user_id: int, profile: UserProfile) -> None:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        self.profiles.save_profile(user_id, profile)
+
     def get_profile_summary(self, telegram_user_id: int) -> TelegramProfileSummary:
         user_id = self.ensure_user_defaults(telegram_user_id)
         profile = self.profiles.get_profile(user_id) or UserProfile()

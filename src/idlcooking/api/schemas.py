@@ -8,6 +8,7 @@ class ProfilePayload(BaseModel):
     hard_restrictions: list[str] = Field(default_factory=list)
     disliked_ingredients: list[str] = Field(default_factory=list)
     favorite_tags: list[str] = Field(default_factory=list)
+    budget_level: str = "moderate"
     activity_level: str = "light"
     nutrition_goal: str = "maintain"
 
