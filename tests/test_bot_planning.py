@@ -38,3 +38,12 @@ def test_telegram_planning_facade_returns_default_profile_summary() -> None:
     assert summary.cooking_effort_minutes == 20
     assert summary.planning_weekday == 5
     assert summary.planning_time == "09:00"
+
+
+def test_telegram_planning_facade_deletes_user_data() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+    facade.ensure_user_defaults(telegram_user_id=12345)
+
+    facade.delete_user_data(telegram_user_id=12345)
+
+    assert facade.users.get_user_id_by_telegram_id(12345) is None

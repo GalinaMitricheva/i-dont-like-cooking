@@ -82,6 +82,13 @@ class UserRepository:
         ).fetchone()
         return int(row["id"]) if row else None
 
+    def delete_user(self, telegram_user_id: int) -> None:
+        self.connection.execute(
+            "DELETE FROM users WHERE telegram_user_id = ?",
+            (telegram_user_id,),
+        )
+        self.connection.commit()
+
 
 class ProfileRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:

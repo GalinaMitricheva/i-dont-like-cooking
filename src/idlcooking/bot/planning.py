@@ -57,6 +57,9 @@ class TelegramPlanningFacade:
             self.schedules.save_schedule(user_id, PlanningSchedule(timezone=timezone))
         return user_id
 
+    def delete_user_data(self, telegram_user_id: int) -> None:
+        self.users.delete_user(telegram_user_id)
+
     def get_profile_summary(self, telegram_user_id: int) -> TelegramProfileSummary:
         user_id = self.ensure_user_defaults(telegram_user_id)
         profile = self.profiles.get_profile(user_id) or UserProfile()

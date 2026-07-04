@@ -24,6 +24,14 @@ MESSAGES: dict[str, dict[str, str]] = {
             "/plan rice, eggs, cucumber\n\n"
             "Fridge photos will be connected through the local Ollama adapter."
         ),
+        "delete_my_data_confirm": (
+            "This will permanently delete your profile, schedule, planning history, and shopping "
+            "lists.\n\nAre you sure?"
+        ),
+        "delete_my_data_confirm_button": "Yes, delete everything",
+        "delete_my_data_cancel_button": "Cancel",
+        "delete_my_data_done": "Your data has been deleted. Send /start any time to begin again.",
+        "delete_my_data_cancelled": "Cancelled. Your data was not deleted.",
     }
 }
 
