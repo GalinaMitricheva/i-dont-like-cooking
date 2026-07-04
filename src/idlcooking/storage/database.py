@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS planning_schedules (
     at_time TEXT NOT NULL DEFAULT '09:00',
     timezone TEXT NOT NULL DEFAULT 'Europe/Berlin',
     enabled INTEGER NOT NULL DEFAULT 1,
+    last_triggered_at TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );

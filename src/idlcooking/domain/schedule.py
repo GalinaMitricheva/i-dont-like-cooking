@@ -47,3 +47,20 @@ class PlanningSchedule:
             candidate += timedelta(days=7)
 
         return candidate
+
+    def latest_occurrence_before_or_at(self, moment: datetime) -> datetime:
+        """The most recent scheduled occurrence at or before `moment`.
+
+        Used to detect whether a given moment already had its planning cycle
+        triggered, independent of how often the scheduler polls.
+        """
+        zone = ZoneInfo(self.timezone)
+        local_moment = moment.astimezone(zone) if moment.tzinfo else moment.replace(tzinfo=zone)
+        days_since = (local_moment.weekday() - self.weekday) % 7
+        candidate_date = local_moment.date() - timedelta(days=days_since)
+        candidate = datetime.combine(candidate_date, self.at_time, zone)
+
+        if candidate > local_moment:
+            candidate -= timedelta(days=7)
+
+        return candidate

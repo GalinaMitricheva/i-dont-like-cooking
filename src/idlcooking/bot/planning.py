@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from datetime import time
+from datetime import UTC, datetime, time
 
 from idlcooking.application.planning import SEED_RECIPES, PlanningService
 from idlcooking.domain.feedback import Rating, RecipeFeedback
@@ -123,8 +123,24 @@ class TelegramPlanningFacade:
         if self.profiles.get_profile(user_id) is None:
             self.profiles.save_profile(user_id, UserProfile())
         if self.schedules.get_schedule(user_id) is None:
-            self.schedules.save_schedule(user_id, PlanningSchedule(timezone=timezone))
+            schedule = PlanningSchedule(timezone=timezone)
+            self.schedules.save_schedule(user_id, schedule)
+            self._seed_schedule_as_up_to_date(telegram_user_id, schedule)
         return user_id
+
+    def _seed_schedule_as_up_to_date(
+        self, telegram_user_id: int, schedule: PlanningSchedule
+    ) -> None:
+        """Mark a schedule as already covered through now.
+
+        Without this, a freshly created or just-changed schedule with no
+        last_triggered_at would look "due" for whatever occurrence most
+        recently passed, firing a plan immediately instead of waiting for the
+        user's actual next scheduled day/time.
+        """
+        now = datetime.now(UTC)
+        occurrence = schedule.latest_occurrence_before_or_at(now)
+        self.schedules.mark_schedule_triggered(telegram_user_id, occurrence.isoformat())
 
     def delete_user_data(self, telegram_user_id: int) -> None:
         self.users.delete_user(telegram_user_id)
@@ -178,11 +194,30 @@ class TelegramPlanningFacade:
         timezone: str,
     ) -> TelegramScheduleSummary:
         user_id = self.ensure_user_defaults(telegram_user_id, timezone=timezone)
-        self.schedules.save_schedule(
-            user_id,
-            PlanningSchedule(weekday=weekday, at_time=at_time, timezone=timezone),
-        )
+        schedule = PlanningSchedule(weekday=weekday, at_time=at_time, timezone=timezone)
+        self.schedules.save_schedule(user_id, schedule)
+        self._seed_schedule_as_up_to_date(telegram_user_id, schedule)
         return self.get_schedule_summary(telegram_user_id)
+
+    def get_due_telegram_user_ids(self, now: datetime) -> list[int]:
+        due: list[int] = []
+        for telegram_user_id, schedule, last_triggered_at in (
+            self.schedules.get_enabled_schedules_with_telegram_ids()
+        ):
+            occurrence = schedule.latest_occurrence_before_or_at(now)
+            if last_triggered_at and datetime.fromisoformat(last_triggered_at) >= occurrence:
+                continue
+            due.append(telegram_user_id)
+        return due
+
+    def mark_schedule_triggered(self, telegram_user_id: int, now: datetime) -> None:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        schedule = self.schedules.get_schedule(user_id) or PlanningSchedule()
+        occurrence = schedule.latest_occurrence_before_or_at(now)
+        self.schedules.mark_schedule_triggered(telegram_user_id, occurrence.isoformat())
+
+    def get_language(self, telegram_user_id: int) -> str:
+        return self.users.get_language(telegram_user_id)
 
     def _recipe_pool(self) -> tuple[RecipeCandidate, ...]:
         cached = self.recipe_catalog.get_all_recipes()

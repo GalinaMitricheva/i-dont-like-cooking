@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from idlcooking.bot.handlers import router
 from idlcooking.bot.planning import TelegramPlanningFacade
 from idlcooking.config import get_settings
+from idlcooking.scheduler import create_scheduler, register_scheduled_jobs
 
 
 async def run_bot() -> None:
@@ -15,9 +16,15 @@ async def run_bot() -> None:
 
     logging.basicConfig(level=logging.INFO)
     bot = Bot(token=settings.telegram_bot_token)
+    planning_facade = TelegramPlanningFacade(settings.database_url)
     dispatcher = Dispatcher()
-    dispatcher["planning_facade"] = TelegramPlanningFacade(settings.database_url)
+    dispatcher["planning_facade"] = planning_facade
     dispatcher.include_router(router)
+
+    scheduler = create_scheduler()
+    register_scheduled_jobs(scheduler, bot, planning_facade)
+    scheduler.start()
+
     await dispatcher.start_polling(bot)
 
 

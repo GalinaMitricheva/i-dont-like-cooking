@@ -229,7 +229,7 @@ def _feedback_keyboard(language: str) -> InlineKeyboardMarkup:
     )
 
 
-def _plan_keyboard(language: str) -> InlineKeyboardMarkup:
+def plan_keyboard(language: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -556,7 +556,7 @@ async def _send_plan(
     menu = "\n".join(summary_menu_lines)
     await message.answer(
         t(language, "plan", planning_cycle_id=cycle_id, menu=menu),
-        reply_markup=_plan_keyboard(language),
+        reply_markup=plan_keyboard(language),
     )
 
 

@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 
 from idlcooking.bot.handlers import _parse_list_answer, _resolve_message_language
@@ -272,3 +272,19 @@ def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:
     assert _parse_list_answer("Skip") == ()
     assert _parse_list_answer("") == ()
     assert _parse_list_answer("peanut, shellfish;  soy ") == ("peanut", "shellfish", "soy")
+
+
+def test_telegram_planning_facade_new_schedule_is_not_immediately_due() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+    facade.ensure_user_defaults(telegram_user_id=1)
+
+    # A freshly created schedule must not fire on the very next scheduler tick;
+    # it should wait for its actual next occurrence.
+    just_created = datetime.now(UTC)
+    assert facade.get_due_telegram_user_ids(just_created) == []
+
+    a_week_and_a_day_later = just_created + timedelta(days=8)
+    assert facade.get_due_telegram_user_ids(a_week_and_a_day_later) == [1]
+
+    facade.mark_schedule_triggered(1, a_week_and_a_day_later)
+    assert facade.get_due_telegram_user_ids(a_week_and_a_day_later) == []

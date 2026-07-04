@@ -24,6 +24,31 @@ def test_next_run_rolls_to_next_week_after_planning_time() -> None:
     )
 
 
+def test_latest_occurrence_is_today_when_scheduled_time_has_passed() -> None:
+    schedule = PlanningSchedule(weekday=5, at_time=time(9), timezone="Europe/Berlin")
+    now = datetime(2026, 7, 4, 9, 30, tzinfo=ZoneInfo("Europe/Berlin"))
+
+    assert schedule.latest_occurrence_before_or_at(now) == datetime(
+        2026, 7, 4, 9, 0, tzinfo=ZoneInfo("Europe/Berlin")
+    )
+
+
+def test_latest_occurrence_is_at_the_exact_moment() -> None:
+    schedule = PlanningSchedule(weekday=5, at_time=time(9), timezone="Europe/Berlin")
+    now = datetime(2026, 7, 4, 9, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+
+    assert schedule.latest_occurrence_before_or_at(now) == now
+
+
+def test_latest_occurrence_rolls_back_to_previous_week_before_scheduled_time() -> None:
+    schedule = PlanningSchedule(weekday=5, at_time=time(9), timezone="Europe/Berlin")
+    now = datetime(2026, 7, 4, 8, 0, tzinfo=ZoneInfo("Europe/Berlin"))
+
+    assert schedule.latest_occurrence_before_or_at(now) == datetime(
+        2026, 6, 27, 9, 0, tzinfo=ZoneInfo("Europe/Berlin")
+    )
+
+
 def test_parse_weekday_accepts_case_insensitive_names() -> None:
     assert parse_weekday("Saturday") == 5
     assert parse_weekday("monday") == 0

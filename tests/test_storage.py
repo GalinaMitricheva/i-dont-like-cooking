@@ -268,3 +268,27 @@ def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
     cycles.mark_all_items_bought(planning_cycle_id)
     lines_after = cycles.get_shopping_list_lines(planning_cycle_id)
     assert all(item["checked"] for item in lines_after)
+
+
+def test_schedule_repository_lists_enabled_schedules_with_telegram_ids() -> None:
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    users = UserRepository(connection)
+    schedules = ScheduleRepository(connection)
+
+    enabled_user_id = users.upsert_telegram_user(telegram_user_id=111)
+    schedules.save_schedule(enabled_user_id, PlanningSchedule(weekday=5, at_time=time(9, 0)))
+
+    disabled_user_id = users.upsert_telegram_user(telegram_user_id=222)
+    schedules.save_schedule(disabled_user_id, PlanningSchedule(enabled=False))
+
+    results = schedules.get_enabled_schedules_with_telegram_ids()
+
+    assert [telegram_user_id for telegram_user_id, _, _ in results] == [111]
+    _, schedule, last_triggered_at = results[0]
+    assert schedule.weekday == 5
+    assert last_triggered_at is None
+
+    schedules.mark_schedule_triggered(111, "2026-07-04T09:00:00+00:00")
+    results_after = schedules.get_enabled_schedules_with_telegram_ids()
+    assert results_after[0][2] == "2026-07-04T09:00:00+00:00"

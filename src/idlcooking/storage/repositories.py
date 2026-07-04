@@ -85,6 +85,13 @@ class UserRepository:
         ).fetchone()
         return int(row["id"]) if row else None
 
+    def get_language(self, telegram_user_id: int) -> str:
+        row = self.connection.execute(
+            "SELECT language FROM users WHERE telegram_user_id = ?",
+            (telegram_user_id,),
+        ).fetchone()
+        return row["language"] if row else "en"
+
     def delete_user(self, telegram_user_id: int) -> None:
         self.connection.execute(
             "DELETE FROM users WHERE telegram_user_id = ?",
@@ -222,6 +229,44 @@ class ScheduleRepository:
             timezone=row["timezone"],
             enabled=bool(row["enabled"]),
         )
+
+    def get_enabled_schedules_with_telegram_ids(
+        self,
+    ) -> list[tuple[int, PlanningSchedule, str | None]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                users.telegram_user_id AS telegram_user_id,
+                planning_schedules.weekday AS weekday,
+                planning_schedules.at_time AS at_time,
+                planning_schedules.timezone AS timezone,
+                planning_schedules.last_triggered_at AS last_triggered_at
+            FROM planning_schedules
+            JOIN users ON users.id = planning_schedules.user_id
+            WHERE planning_schedules.enabled = 1
+            """
+        ).fetchall()
+        results = []
+        for row in rows:
+            hour, minute = row["at_time"].split(":", maxsplit=1)
+            schedule = PlanningSchedule(
+                weekday=row["weekday"],
+                at_time=time(hour=int(hour), minute=int(minute)),
+                timezone=row["timezone"],
+            )
+            results.append((int(row["telegram_user_id"]), schedule, row["last_triggered_at"]))
+        return results
+
+    def mark_schedule_triggered(self, telegram_user_id: int, occurrence_iso: str) -> None:
+        self.connection.execute(
+            """
+            UPDATE planning_schedules
+            SET last_triggered_at = ?
+            WHERE user_id = (SELECT id FROM users WHERE telegram_user_id = ?)
+            """,
+            (occurrence_iso, telegram_user_id),
+        )
+        self.connection.commit()
 
 
 class PlanningCycleRepository:
