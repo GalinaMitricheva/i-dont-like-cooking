@@ -242,6 +242,7 @@ class TelegramPlanningFacade:
         telegram_user_id: int,
         inventory_text: str = "",
         include_lunch_leftovers: bool = True,
+        days: int = 7,
     ) -> TelegramPlanSummary:
         user_id = self.ensure_user_defaults(telegram_user_id)
         profile = self.profiles.get_profile(user_id) or UserProfile()
@@ -254,7 +255,7 @@ class TelegramPlanningFacade:
         generated = planning.generate_weekly_plan(
             profile,
             inventory,
-            days=7,
+            days=days,
             include_lunch_leftovers=include_lunch_leftovers,
             liked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.LIKED),
             disliked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.DISLIKED),

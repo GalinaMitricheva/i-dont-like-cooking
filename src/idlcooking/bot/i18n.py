@@ -19,6 +19,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_mark_bought_button": "✅ Mark all bought",
         "plan_accepted_toast": "Menu accepted!",
         "plan_marked_bought_toast": "Shopping list marked as bought.",
+        "plan_days_prompt": "How many days would you like to plan for?",
+        "plan_days_3": "3 days",
+        "plan_days_5": "5 days",
+        "plan_days_7": "7 days (full week)",
+        "plan_meals_prompt": "Which meals should I include?",
+        "plan_meals_dinner_only": "Dinner only",
+        "plan_meals_dinner_and_lunch": "Dinner + lunch leftovers",
         "schedule_current": (
             "Current schedule: {weekday_name}, {at_time} ({timezone}).\n\n"
             "To change it, send:\n/schedule <weekday> <HH:MM> [timezone]\n"

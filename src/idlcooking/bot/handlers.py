@@ -38,6 +38,8 @@ _PLAN_REGENERATE_CALLBACK = "plan:regenerate"
 _PLAN_SHOPPING_LIST_CALLBACK = "plan:shopping_list"
 _PLAN_MARK_BOUGHT_CALLBACK = "plan:mark_bought"
 _PLAN_RATE_CALLBACK = "plan:rate"
+_PLAN_DAYS_PREFIX = "plan:days:"
+_PLAN_MEALS_PREFIX = "plan:meals:"
 
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
     "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
@@ -67,6 +69,11 @@ class OnboardingStates(StatesGroup):
 
 class FeedbackStates(StatesGroup):
     reviewing = State()
+
+
+class PlanStates(StatesGroup):
+    days = State()
+    meals = State()
 
 
 def _telegram_user_id(message: Message) -> int:
@@ -268,6 +275,29 @@ def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
                 ),
             ],
         ]
+    )
+
+
+def _plan_days_keyboard(language: str) -> InlineKeyboardMarkup:
+    return _enum_keyboard(
+        language,
+        _PLAN_DAYS_PREFIX,
+        (
+            ("3", "plan_days_3"),
+            ("5", "plan_days_5"),
+            ("7", "plan_days_7"),
+        ),
+    )
+
+
+def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
+    return _enum_keyboard(
+        language,
+        _PLAN_MEALS_PREFIX,
+        (
+            ("dinner_only", "plan_meals_dinner_only"),
+            ("dinner_and_lunch", "plan_meals_dinner_and_lunch"),
+        ),
     )
 
 
@@ -561,17 +591,67 @@ async def _send_plan(
 
 
 @router.message(Command("plan"))
-async def plan(message: Message, planning_facade: TelegramPlanningFacade) -> None:
+async def plan(
+    message: Message, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
     language = _resolve_message_language(message)
     if not await _require_consent(message, planning_facade, language):
         return
     command_text = message.text or ""
     inventory_text = command_text.removeprefix("/plan").strip()
-    summary = planning_facade.generate_plan_from_text_inventory(
-        _telegram_user_id(message),
-        inventory_text=inventory_text,
+    await state.update_data(plan_inventory_text=inventory_text)
+    await state.set_state(PlanStates.days)
+    await message.answer(
+        t(language, "plan_days_prompt"),
+        reply_markup=_plan_days_keyboard(language),
     )
-    await _send_plan(message, summary.menu_lines, summary.planning_cycle_id, language)
+
+
+@router.callback_query(PlanStates.days, F.data.startswith(_PLAN_DAYS_PREFIX))
+async def plan_days_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.data is None
+    ):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    await state.update_data(plan_days=int(callback.data.removeprefix(_PLAN_DAYS_PREFIX)))
+    await state.set_state(PlanStates.meals)
+    await callback.message.edit_text(
+        t(language, "plan_meals_prompt"),
+        reply_markup=_plan_meals_keyboard(language),
+    )
+    await callback.answer()
+
+
+@router.callback_query(PlanStates.meals, F.data.startswith(_PLAN_MEALS_PREFIX))
+async def plan_meals_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.data is None
+    ):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    include_lunch_leftovers = callback.data.removeprefix(_PLAN_MEALS_PREFIX) == "dinner_and_lunch"
+    await state.update_data(plan_include_lunch_leftovers=include_lunch_leftovers)
+
+    data = await state.get_data()
+    summary = planning_facade.generate_plan_from_text_inventory(
+        callback.from_user.id,
+        inventory_text=data.get("plan_inventory_text", ""),
+        include_lunch_leftovers=include_lunch_leftovers,
+        days=data.get("plan_days", 7),
+    )
+    # Exit the flow but keep the chosen settings so "Regenerate" can reuse them.
+    await state.set_state(None)
+    await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
+    await callback.answer()
 
 
 @router.callback_query(F.data == _PLAN_ACCEPT_CALLBACK)
@@ -588,13 +668,19 @@ async def plan_accept_callback(
 
 @router.callback_query(F.data == _PLAN_REGENERATE_CALLBACK)
 async def plan_regenerate_callback(
-    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
 ) -> None:
     if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
     language = resolve_language(callback.from_user.language_code)
-    summary = planning_facade.generate_plan_from_text_inventory(callback.from_user.id)
+    data = await state.get_data()
+    summary = planning_facade.generate_plan_from_text_inventory(
+        callback.from_user.id,
+        inventory_text=data.get("plan_inventory_text", ""),
+        include_lunch_leftovers=data.get("plan_include_lunch_leftovers", True),
+        days=data.get("plan_days", 7),
+    )
     await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
     await callback.answer()
 

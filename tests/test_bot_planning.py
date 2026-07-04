@@ -57,6 +57,21 @@ def test_telegram_planning_facade_can_disable_lunch_leftovers() -> None:
     assert all("(lunch)" not in line for line in summary.menu_lines)
 
 
+def test_telegram_planning_facade_respects_requested_day_count() -> None:
+    facade = _offline_facade()
+
+    dinner_only = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_lunch_leftovers=False
+    )
+    assert len(dinner_only.menu_lines) == 3
+
+    with_lunches = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_lunch_leftovers=True
+    )
+    # 3 dinners plus a leftover lunch for every day after the first.
+    assert len(with_lunches.menu_lines) == 5
+
+
 def test_telegram_planning_facade_caches_discovered_recipes_and_reuses_them() -> None:
     discovered_recipe = RecipeCandidate(
         title="Discovered Soup",
