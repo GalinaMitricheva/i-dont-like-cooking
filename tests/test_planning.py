@@ -8,6 +8,7 @@ from idlcooking.domain.profile import UserProfile
 from idlcooking.domain.shopping import (
     Category,
     _categorize,
+    _combine_quantities,
     _parse_ingredient_line,
     build_shopping_list,
 )
@@ -215,6 +216,79 @@ def test_build_shopping_list_groups_by_category_and_marks_spices_optional() -> N
     # Grouped by category: items in the same category stay contiguous.
     categories_in_order = [item.category for item in shopping_list]
     assert categories_in_order == sorted(categories_in_order)
+
+
+def test_shopping_list_sums_matching_quantities_across_recipes() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Rice bowl A",
+            source_url="https://example.com/a",
+            ingredients=("2 cups rice",),
+            active_time_minutes=10,
+        ),
+        RecipeCandidate(
+            title="Rice bowl B",
+            source_url="https://example.com/b",
+            ingredients=("1 cup rice",),
+            active_time_minutes=12,
+        ),
+        RecipeCandidate(
+            title="Rice bowl C",
+            source_url="https://example.com/c",
+            ingredients=("3 cups rice",),
+            active_time_minutes=14,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=3)
+    shopping_list = build_shopping_list(menu)
+
+    by_name = {item.name: item for item in shopping_list}
+    assert by_name["rice"].quantity == "6 cups"
+
+
+def test_combine_quantities_sums_matching_units_regardless_of_plural() -> None:
+    assert _combine_quantities(["2 cups", "1 cup"]) == "3 cups"
+    assert _combine_quantities(["1 clove", "2 cloves"]) == "3 cloves"
+    assert _combine_quantities(["1 cup"]) == "1 cup"
+
+
+def test_combine_quantities_handles_fractions() -> None:
+    assert _combine_quantities(["1/2 cup", "1/2 cup"]) == "1 cup"
+
+
+def test_combine_quantities_ignores_missing_amounts() -> None:
+    assert _combine_quantities(["2", ""]) == "2"
+    assert _combine_quantities(["", ""]) == ""
+
+
+def test_combine_quantities_falls_back_to_listing_when_unparseable() -> None:
+    assert _combine_quantities(["a pinch", "2 cups"]) == "a pinch + 2 cups"
+
+
+def test_shopping_list_lists_quantities_separately_when_units_differ() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="A",
+            source_url="https://example.com/a",
+            ingredients=("2 cups rice",),
+            active_time_minutes=10,
+        ),
+        RecipeCandidate(
+            title="B",
+            source_url="https://example.com/b",
+            ingredients=("1 tablespoon rice",),
+            active_time_minutes=12,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=2)
+    shopping_list = build_shopping_list(menu)
+
+    by_name = {item.name: item for item in shopping_list}
+    assert by_name["rice"].quantity == "2 cups + 1 tablespoon"
 
 
 def test_breakfast_prefers_recipes_tagged_breakfast() -> None:

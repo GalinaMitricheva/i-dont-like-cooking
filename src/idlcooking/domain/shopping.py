@@ -86,6 +86,68 @@ def _categorize(name: str) -> Category:
     return Category.OTHER
 
 
+_AMOUNT_UNIT_PATTERN = re.compile(r"^(?P<amount>[\d.]+|\d+/\d+)\s*(?P<unit>[a-zA-Z]*)$")
+
+
+def _parse_amount(text: str) -> float | None:
+    if "/" in text:
+        numerator, _, denominator = text.partition("/")
+        try:
+            return float(numerator) / float(denominator)
+        except (ValueError, ZeroDivisionError):
+            return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _format_amount(value: float) -> str:
+    return str(int(value)) if value == int(value) else f"{value:g}"
+
+
+def _normalize_unit(unit: str) -> str:
+    """Singularize a unit for comparison, e.g. "cups" and "cup" both -> "cup"."""
+    return unit[:-1] if len(unit) > 1 and unit.endswith("s") else unit
+
+
+def _pluralize_unit(unit: str, amount: float) -> str:
+    if not unit or amount == 1:
+        return unit
+    return unit if unit.endswith("s") else f"{unit}s"
+
+
+def _combine_quantities(quantities: list[str]) -> str:
+    """Combine quantities for the same ingredient across multiple recipes.
+
+    Sums amounts that share a recognized unit (e.g. "2 cups" + "1 cup" -> "3 cups").
+    Falls back to listing every occurrence when units differ or a quantity is not a
+    plain number/unit, rather than silently keeping only the first one.
+    """
+    non_empty = [quantity for quantity in quantities if quantity]
+    if not non_empty:
+        return ""
+    if len(non_empty) == 1:
+        return non_empty[0]
+
+    parsed: list[tuple[float, str]] = []
+    for quantity in non_empty:
+        match = _AMOUNT_UNIT_PATTERN.match(quantity.strip())
+        amount = _parse_amount(match.group("amount")) if match else None
+        if match is None or amount is None:
+            parsed = []
+            break
+        parsed.append((amount, _normalize_unit(match.group("unit").strip().lower())))
+
+    units = {unit for _, unit in parsed}
+    if parsed and len(units) == 1:
+        total = sum(amount for amount, _ in parsed)
+        unit = _pluralize_unit(next(iter(units)), total)
+        return f"{_format_amount(total)} {unit}".strip()
+
+    return " + ".join(non_empty)
+
+
 @dataclass(frozen=True)
 class ShoppingListItem:
     name: str
@@ -100,22 +162,33 @@ def build_shopping_list(
     inventory: tuple[InventoryItem, ...] = (),
 ) -> list[ShoppingListItem]:
     available = {item.name.lower() for item in inventory}
-    needed: dict[str, ShoppingListItem] = {}
+    names: dict[str, str] = {}
+    categories: dict[str, Category] = {}
+    quantities: dict[str, list[str]] = {}
 
     for menu_item in menu:
         for ingredient_line in menu_item.recipe.ingredients:
             name, quantity = _parse_ingredient_line(ingredient_line)
             normalized = name.lower()
-            if not normalized or normalized in needed:
+            if not normalized:
                 continue
-            category = _categorize(name)
-            needed[normalized] = ShoppingListItem(
-                name=name,
-                quantity=quantity,
-                category=category.value,
-                already_have=normalized in available,
-                optional=category == Category.SPICES_AND_SAUCES,
-            )
+            if normalized not in names:
+                names[normalized] = name
+                categories[normalized] = _categorize(name)
+                quantities[normalized] = []
+            if quantity:
+                quantities[normalized].append(quantity)
+
+    needed = {
+        normalized: ShoppingListItem(
+            name=name,
+            quantity=_combine_quantities(quantities[normalized]),
+            category=categories[normalized].value,
+            already_have=normalized in available,
+            optional=categories[normalized] == Category.SPICES_AND_SAUCES,
+        )
+        for normalized, name in names.items()
+    }
 
     return sorted(
         needed.values(),
