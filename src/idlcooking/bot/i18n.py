@@ -4,6 +4,7 @@ SUPPORTED_LANGUAGES = frozenset({DEFAULT_LANGUAGE})
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
+        "back_button": "\U0001F519 Back",
         "start": (
             "Hi! I can help you build a simple weekly menu and shopping list.\n\n"
             "Start with /plan. If you want to account for food you already have, write:\n"

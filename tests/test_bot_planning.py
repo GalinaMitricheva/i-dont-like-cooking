@@ -311,6 +311,24 @@ def test_telegram_planning_facade_returns_recipe_details_grouped_by_day() -> Non
     assert isinstance(days[0][0].ingredients, tuple)
 
 
+def test_telegram_planning_facade_rebuilds_plan_summary_without_regenerating() -> None:
+    facade = _offline_facade()
+
+    assert facade.get_latest_plan_summary(telegram_user_id=1) is None
+
+    original = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_lunch_leftovers=False
+    )
+
+    rebuilt = facade.get_latest_plan_summary(telegram_user_id=1)
+
+    assert rebuilt is not None
+    assert rebuilt.planning_cycle_id == original.planning_cycle_id
+    assert rebuilt.menu_lines == original.menu_lines
+    # Rebuilding must not create a new planning cycle.
+    assert facade.cycles.get_latest_cycle_id(facade.users.get_user_id_by_telegram_id(1)) == 1
+
+
 def test_parse_list_answer_treats_none_and_skip_as_empty() -> None:
     assert _parse_list_answer("none") == ()
     assert _parse_list_answer("Skip") == ()

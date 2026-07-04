@@ -372,3 +372,21 @@ class TelegramPlanningFacade:
             ]
             for day in range(max(grouped) + 1)
         ]
+
+    def get_latest_plan_summary(self, telegram_user_id: int) -> TelegramPlanSummary | None:
+        """Rebuild the plan summary from persisted data, without regenerating a new cycle."""
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle_id = self.cycles.get_latest_cycle_id(user_id)
+        if cycle_id is None:
+            return None
+        days = self.get_latest_recipe_details_by_day(telegram_user_id)
+        menu_lines = tuple(
+            f"Day {day_index + 1} ({item.meal_type}): {item.title} ({item.active_time_minutes} min)"
+            for day_index, items in enumerate(days)
+            for item in items
+        )
+        return TelegramPlanSummary(
+            planning_cycle_id=cycle_id,
+            menu_lines=menu_lines,
+            shopping_lines=self.get_latest_shopping_list_lines(telegram_user_id),
+        )

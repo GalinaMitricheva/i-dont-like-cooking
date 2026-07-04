@@ -41,6 +41,9 @@ _PLAN_RATE_CALLBACK = "plan:rate"
 _PLAN_MEALS_PREFIX = "plan:meals:"
 _PLAN_RECIPES_CALLBACK = "plan:recipes"
 _RECIPE_VIEW_PREFIX = "plan:recipe_view:"
+_PLAN_BACK_TO_MENU_CALLBACK = "plan:back_to_menu"
+_PLAN_BACK_TO_DAYS_CALLBACK = "plan:back_to_days"
+_FEEDBACK_BACK_CALLBACK = "feedback:back"
 
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
     "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
@@ -204,37 +207,44 @@ def _body_metrics_sex_keyboard(language: str) -> InlineKeyboardMarkup:
     )
 
 
-def _feedback_keyboard(language: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def _feedback_keyboard(language: str, *, show_back: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=t(language, "feedback_liked_button"),
+                callback_data=f"{_FEEDBACK_PREFIX}liked",
+            ),
+            InlineKeyboardButton(
+                text=t(language, "feedback_neutral_button"),
+                callback_data=f"{_FEEDBACK_PREFIX}neutral",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=t(language, "feedback_too_much_effort_button"),
+                callback_data=f"{_FEEDBACK_PREFIX}too_much_effort",
+            ),
+            InlineKeyboardButton(
+                text=t(language, "feedback_too_expensive_button"),
+                callback_data=f"{_FEEDBACK_PREFIX}too_expensive",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=t(language, "feedback_skipped_button"),
+                callback_data=f"{_FEEDBACK_PREFIX}skipped",
+            ),
+        ],
+    ]
+    if show_back:
+        rows.append(
             [
                 InlineKeyboardButton(
-                    text=t(language, "feedback_liked_button"),
-                    callback_data=f"{_FEEDBACK_PREFIX}liked",
-                ),
-                InlineKeyboardButton(
-                    text=t(language, "feedback_neutral_button"),
-                    callback_data=f"{_FEEDBACK_PREFIX}neutral",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t(language, "feedback_too_much_effort_button"),
-                    callback_data=f"{_FEEDBACK_PREFIX}too_much_effort",
-                ),
-                InlineKeyboardButton(
-                    text=t(language, "feedback_too_expensive_button"),
-                    callback_data=f"{_FEEDBACK_PREFIX}too_expensive",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t(language, "feedback_skipped_button"),
-                    callback_data=f"{_FEEDBACK_PREFIX}skipped",
-                ),
-            ],
-        ]
-    )
+                    text=t(language, "back_button"), callback_data=_FEEDBACK_BACK_CALLBACK
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def plan_keyboard(language: str) -> InlineKeyboardMarkup:
@@ -270,23 +280,32 @@ def plan_keyboard(language: str) -> InlineKeyboardMarkup:
     )
 
 
+def _back_to_menu_button(language: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(
+        text=t(language, "back_button"),
+        callback_data=_PLAN_BACK_TO_MENU_CALLBACK,
+    )
+
+
 def _recipe_view_keyboard(language: str, day_index: int, total_days: int) -> InlineKeyboardMarkup:
-    row = []
+    nav_row = []
     if day_index > 0:
-        row.append(
+        nav_row.append(
             InlineKeyboardButton(
                 text=t(language, "recipe_view_previous_button"),
                 callback_data=f"{_RECIPE_VIEW_PREFIX}{day_index - 1}",
             )
         )
     if day_index < total_days - 1:
-        row.append(
+        nav_row.append(
             InlineKeyboardButton(
                 text=t(language, "recipe_view_next_button"),
                 callback_data=f"{_RECIPE_VIEW_PREFIX}{day_index + 1}",
             )
         )
-    return InlineKeyboardMarkup(inline_keyboard=[row] if row else [])
+    rows = [nav_row] if nav_row else []
+    rows.append([_back_to_menu_button(language)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
@@ -298,6 +317,7 @@ def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
                     callback_data=_PLAN_MARK_BOUGHT_CALLBACK,
                 ),
             ],
+            [_back_to_menu_button(language)],
         ]
     )
 
@@ -312,7 +332,7 @@ _MEAL_CHOICES: dict[str, tuple[bool, bool]] = {
 
 
 def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
-    return _enum_keyboard(
+    keyboard = _enum_keyboard(
         language,
         _PLAN_MEALS_PREFIX,
         (
@@ -322,6 +342,14 @@ def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
             ("dinner_lunch_breakfast", "plan_meals_all"),
         ),
     )
+    keyboard.inline_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=t(language, "back_button"), callback_data=_PLAN_BACK_TO_DAYS_CALLBACK
+            )
+        ]
+    )
+    return keyboard
 
 
 def _parse_list_answer(text: str) -> tuple[str, ...]:
@@ -642,6 +670,17 @@ async def plan_days_message(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.callback_query(PlanStates.meals, F.data == _PLAN_BACK_TO_DAYS_CALLBACK)
+async def plan_meals_back_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    await state.set_state(PlanStates.days)
+    await callback.message.edit_text(t(language, "plan_days_prompt"))
+    await callback.answer()
+
+
 @router.callback_query(PlanStates.meals, F.data.startswith(_PLAN_MEALS_PREFIX))
 async def plan_meals_callback(
     callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
@@ -812,6 +851,26 @@ async def recipe_view_callback(
     await callback.answer()
 
 
+@router.callback_query(F.data == _PLAN_BACK_TO_MENU_CALLBACK)
+async def plan_back_to_menu_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    summary = planning_facade.get_latest_plan_summary(callback.from_user.id)
+    if summary is None:
+        await callback.answer(t(language, "plan_no_recipes"), show_alert=True)
+        return
+    menu = "\n".join(summary.menu_lines)
+    await callback.message.edit_text(
+        t(language, "plan", planning_cycle_id=summary.planning_cycle_id, menu=menu),
+        reply_markup=plan_keyboard(language),
+    )
+    await callback.answer()
+
+
 @router.callback_query(F.data == _PLAN_RATE_CALLBACK)
 async def plan_rate_callback(
     callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
@@ -917,7 +976,7 @@ async def _send_next_feedback_prompt(message: Message, state: FSMContext, langua
 
     await message.answer(
         t(language, "feedback_prompt", title=items[index]["title"]),
-        reply_markup=_feedback_keyboard(language),
+        reply_markup=_feedback_keyboard(language, show_back=index > 0),
     )
 
 
@@ -952,6 +1011,20 @@ async def feedback(
         return
     telegram_user_id = _telegram_user_id(message)
     await _start_feedback_flow(message, planning_facade, state, telegram_user_id, language)
+
+
+@router.callback_query(FeedbackStates.reviewing, F.data == _FEEDBACK_BACK_CALLBACK)
+async def feedback_back_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.from_user is None or not isinstance(callback.message, Message):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    data = await state.get_data()
+    index = max(0, data.get("feedback_index", 0) - 1)
+    await state.update_data(feedback_index=index)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await _send_next_feedback_prompt(callback.message, state, language)
+    await callback.answer()
 
 
 @router.callback_query(FeedbackStates.reviewing, F.data.startswith(_FEEDBACK_PREFIX))
