@@ -215,3 +215,94 @@ def test_build_shopping_list_groups_by_category_and_marks_spices_optional() -> N
     # Grouped by category: items in the same category stay contiguous.
     categories_in_order = [item.category for item in shopping_list]
     assert categories_in_order == sorted(categories_in_order)
+
+
+def test_breakfast_prefers_recipes_tagged_breakfast() -> None:
+    profile = UserProfile()
+    breakfast_recipe = RecipeCandidate(
+        title="Oats and banana",
+        source_url="https://example.com/oats",
+        ingredients=("oats", "banana"),
+        active_time_minutes=5,
+        tags=("breakfast", "no-cook"),
+    )
+    dinner_recipe = RecipeCandidate(
+        title="Chicken couscous tray",
+        source_url="https://example.com/couscous",
+        ingredients=("chicken", "couscous"),
+        active_time_minutes=18,
+    )
+
+    menu = select_weekly_menu(
+        [dinner_recipe, breakfast_recipe], profile, days=1, include_breakfast=True
+    )
+
+    breakfasts = [item for item in menu if item.meal_type == MealType.BREAKFAST]
+    assert len(breakfasts) == 1
+    assert breakfasts[0].recipe.title == "Oats and banana"
+    # Dinner selection is unaffected by breakfast filtering.
+    dinners = [item for item in menu if item.meal_type == MealType.DINNER]
+    assert dinners[0].recipe.title == "Chicken couscous tray"
+
+
+def test_breakfast_cycles_through_a_smaller_candidate_pool() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Oats and banana",
+            source_url="https://example.com/oats",
+            ingredients=("oats", "banana"),
+            active_time_minutes=5,
+            tags=("breakfast",),
+        ),
+        RecipeCandidate(
+            title="Scrambled eggs",
+            source_url="https://example.com/eggs",
+            ingredients=("eggs",),
+            active_time_minutes=5,
+            tags=("breakfast",),
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=4, include_breakfast=True)
+
+    breakfasts = [item for item in menu if item.meal_type == MealType.BREAKFAST]
+    assert len(breakfasts) == 4
+    # Only 2 breakfast candidates for 4 days: day 2 repeats day 0's pick, day 3 repeats day 1's.
+    assert breakfasts[0].recipe == breakfasts[2].recipe
+    assert breakfasts[1].recipe == breakfasts[3].recipe
+
+
+def test_breakfast_falls_back_to_all_recipes_when_none_are_tagged() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Chicken couscous tray",
+            source_url="https://example.com/couscous",
+            ingredients=("chicken", "couscous"),
+            active_time_minutes=18,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=1, include_breakfast=True)
+
+    breakfasts = [item for item in menu if item.meal_type == MealType.BREAKFAST]
+    assert len(breakfasts) == 1
+    assert breakfasts[0].recipe.title == "Chicken couscous tray"
+
+
+def test_breakfast_is_excluded_by_default() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Oats and banana",
+            source_url="https://example.com/oats",
+            ingredients=("oats", "banana"),
+            active_time_minutes=5,
+            tags=("breakfast",),
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=1)
+
+    assert all(item.meal_type != MealType.BREAKFAST for item in menu)

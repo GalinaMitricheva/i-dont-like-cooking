@@ -72,6 +72,18 @@ def test_telegram_planning_facade_respects_requested_day_count() -> None:
     assert len(with_lunches.menu_lines) == 5
 
 
+def test_telegram_planning_facade_can_include_breakfast() -> None:
+    facade = _offline_facade()
+
+    summary = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_lunch_leftovers=False, include_breakfast=True
+    )
+
+    # 3 dinners plus a breakfast for every day.
+    assert len(summary.menu_lines) == 6
+    assert any("(breakfast)" in line for line in summary.menu_lines)
+
+
 def test_telegram_planning_facade_caches_discovered_recipes_and_reuses_them() -> None:
     discovered_recipe = RecipeCandidate(
         title="Discovered Soup",

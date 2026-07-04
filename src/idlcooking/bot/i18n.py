@@ -26,6 +26,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_meals_prompt": "Which meals should I include?",
         "plan_meals_dinner_only": "Dinner only",
         "plan_meals_dinner_and_lunch": "Dinner + lunch leftovers",
+        "plan_meals_dinner_and_breakfast": "Dinner + breakfast",
+        "plan_meals_all": "Dinner + lunch leftovers + breakfast",
         "schedule_current": (
             "Current schedule: {weekday_name}, {at_time} ({timezone}).\n\n"
             "To change it, send:\n/schedule <weekday> <HH:MM> [timezone]\n"

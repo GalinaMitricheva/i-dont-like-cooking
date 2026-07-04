@@ -46,6 +46,14 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         protein_grams=25,
     ),
     RecipeCandidate(
+        title="Scrambled eggs on toast",
+        source_url="https://example.com/recipes/scrambled-eggs-toast",
+        ingredients=("eggs", "bread", "butter", "chives"),
+        active_time_minutes=8,
+        tags=("breakfast", "simple", "vegetarian"),
+        protein_grams=18,
+    ),
+    RecipeCandidate(
         title="Pasta with tomato and cottage cheese",
         source_url="https://example.com/recipes/tomato-cottage-pasta",
         ingredients=("pasta", "tomato", "cottage cheese", "spinach"),
@@ -60,6 +68,14 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=14,
         tags=("simple", "microwave", "high-protein"),
         protein_grams=33,
+    ),
+    RecipeCandidate(
+        title="Vegetable stir fry",
+        source_url="https://example.com/recipes/vegetable-stir-fry",
+        ingredients=("broccoli", "carrot", "bell pepper", "soy sauce", "tofu"),
+        active_time_minutes=16,
+        tags=("simple", "vegan", "stir-fry"),
+        protein_grams=20,
     ),
 )
 
@@ -80,6 +96,7 @@ class PlanningService:
         inventory: tuple[InventoryItem, ...] = (),
         days: int = 7,
         include_lunch_leftovers: bool = False,
+        include_breakfast: bool = False,
         liked_recipe_urls: frozenset[str] = frozenset(),
         disliked_recipe_urls: frozenset[str] = frozenset(),
     ) -> GeneratedPlan:
@@ -89,6 +106,7 @@ class PlanningService:
             inventory,
             days=days,
             include_lunch_leftovers=include_lunch_leftovers,
+            include_breakfast=include_breakfast,
             liked_recipe_urls=liked_recipe_urls,
             disliked_recipe_urls=disliked_recipe_urls,
         )

@@ -89,21 +89,56 @@ def score_recipe(
     return score
 
 
+def _eligible_recipes(
+    recipes: list[RecipeCandidate],
+    profile: UserProfile,
+    disliked_recipe_urls: frozenset[str],
+) -> list[RecipeCandidate]:
+    return [
+        recipe
+        for recipe in recipes
+        if not violates_profile(recipe, profile) and recipe.source_url not in disliked_recipe_urls
+    ]
+
+
+def _is_breakfast_tagged(recipe: RecipeCandidate) -> bool:
+    return any("breakfast" in tag.lower() for tag in recipe.tags)
+
+
+def _rank_recipes(
+    recipes: list[RecipeCandidate],
+    profile: UserProfile,
+    inventory: tuple[InventoryItem, ...],
+    liked_recipe_urls: frozenset[str],
+    disliked_recipe_urls: frozenset[str],
+) -> list[tuple[float, RecipeCandidate]]:
+    scored = [
+        (score_recipe(recipe, profile, inventory, liked_recipe_urls, disliked_recipe_urls), recipe)
+        for recipe in recipes
+    ]
+    return sorted(scored, key=lambda item: item[0], reverse=True)
+
+
 def select_weekly_menu(
     recipes: list[RecipeCandidate],
     profile: UserProfile,
     inventory: tuple[InventoryItem, ...] = (),
     days: int = 7,
     include_lunch_leftovers: bool = False,
+    include_breakfast: bool = False,
     liked_recipe_urls: frozenset[str] = frozenset(),
     disliked_recipe_urls: frozenset[str] = frozenset(),
 ) -> list[MenuItem]:
-    scored = [
-        (score_recipe(recipe, profile, inventory, liked_recipe_urls, disliked_recipe_urls), recipe)
-        for recipe in recipes
-        if not violates_profile(recipe, profile) and recipe.source_url not in disliked_recipe_urls
-    ]
-    ranked = sorted(scored, key=lambda item: item[0], reverse=True)
+    eligible = _eligible_recipes(recipes, profile, disliked_recipe_urls)
+
+    # Avoid quick breakfast recipes (which tend to score well on low active time)
+    # crowding out dinner-appropriate ones, unless there's nothing else to choose from.
+    dinner_candidates = [
+        recipe for recipe in eligible if not _is_breakfast_tagged(recipe)
+    ] or eligible
+    ranked = _rank_recipes(
+        dinner_candidates, profile, inventory, liked_recipe_urls, disliked_recipe_urls
+    )
     selected = ranked[:days]
 
     dinners = [
@@ -117,22 +152,63 @@ def select_weekly_menu(
         for index, (score, recipe) in enumerate(selected)
     ]
 
-    if not include_lunch_leftovers:
-        return dinners
+    lunches = (
+        [
+            MenuItem(
+                day_index=dinner.day_index + 1,
+                meal_type=MealType.LUNCH,
+                recipe=dinner.recipe,
+                score=dinner.score,
+                reason="Leftovers from the previous day's dinner.",
+            )
+            for dinner in dinners
+            if dinner.day_index + 1 < days
+        ]
+        if include_lunch_leftovers
+        else []
+    )
 
-    lunches = [
-        MenuItem(
-            day_index=dinner.day_index + 1,
-            meal_type=MealType.LUNCH,
-            recipe=dinner.recipe,
-            score=dinner.score,
-            reason="Leftovers from the previous day's dinner.",
+    breakfasts = (
+        _select_breakfasts(
+            eligible, profile, inventory, days, liked_recipe_urls, disliked_recipe_urls
         )
-        for dinner in dinners
-        if dinner.day_index + 1 < days
-    ]
+        if include_breakfast
+        else []
+    )
 
     return sorted(
-        dinners + lunches,
+        dinners + lunches + breakfasts,
         key=lambda item: (item.day_index, MEAL_TYPE_ORDER[item.meal_type]),
     )
+
+
+def _select_breakfasts(
+    eligible: list[RecipeCandidate],
+    profile: UserProfile,
+    inventory: tuple[InventoryItem, ...],
+    days: int,
+    liked_recipe_urls: frozenset[str],
+    disliked_recipe_urls: frozenset[str],
+) -> list[MenuItem]:
+    breakfast_candidates = [
+        recipe for recipe in eligible if _is_breakfast_tagged(recipe)
+    ] or eligible
+
+    ranked = _rank_recipes(
+        breakfast_candidates, profile, inventory, liked_recipe_urls, disliked_recipe_urls
+    )
+    if not ranked:
+        return []
+
+    # Breakfast candidate pools are typically much smaller than dinner's, so cycle
+    # through the ranked options rather than leaving later days without breakfast.
+    return [
+        MenuItem(
+            day_index=day,
+            meal_type=MealType.BREAKFAST,
+            recipe=ranked[day % len(ranked)][1],
+            score=ranked[day % len(ranked)][0],
+            reason="Quick breakfast option.",
+        )
+        for day in range(days)
+    ]

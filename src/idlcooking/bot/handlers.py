@@ -277,6 +277,15 @@ def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
     )
 
 
+_MEAL_CHOICES: dict[str, tuple[bool, bool]] = {
+    # choice -> (include_lunch_leftovers, include_breakfast)
+    "dinner_only": (False, False),
+    "dinner_and_lunch": (True, False),
+    "dinner_and_breakfast": (False, True),
+    "dinner_lunch_breakfast": (True, True),
+}
+
+
 def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
     return _enum_keyboard(
         language,
@@ -284,6 +293,8 @@ def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
         (
             ("dinner_only", "plan_meals_dinner_only"),
             ("dinner_and_lunch", "plan_meals_dinner_and_lunch"),
+            ("dinner_and_breakfast", "plan_meals_dinner_and_breakfast"),
+            ("dinner_lunch_breakfast", "plan_meals_all"),
         ),
     )
 
@@ -618,14 +629,19 @@ async def plan_meals_callback(
         await callback.answer()
         return
     language = resolve_language(callback.from_user.language_code)
-    include_lunch_leftovers = callback.data.removeprefix(_PLAN_MEALS_PREFIX) == "dinner_and_lunch"
-    await state.update_data(plan_include_lunch_leftovers=include_lunch_leftovers)
+    choice = callback.data.removeprefix(_PLAN_MEALS_PREFIX)
+    include_lunch_leftovers, include_breakfast = _MEAL_CHOICES.get(choice, (True, False))
+    await state.update_data(
+        plan_include_lunch_leftovers=include_lunch_leftovers,
+        plan_include_breakfast=include_breakfast,
+    )
 
     data = await state.get_data()
     summary = planning_facade.generate_plan_from_text_inventory(
         callback.from_user.id,
         inventory_text=data.get("plan_inventory_text", ""),
         include_lunch_leftovers=include_lunch_leftovers,
+        include_breakfast=include_breakfast,
         days=data.get("plan_days", 7),
     )
     # Exit the flow but keep the chosen settings so "Regenerate" can reuse them.
@@ -659,6 +675,7 @@ async def plan_regenerate_callback(
         callback.from_user.id,
         inventory_text=data.get("plan_inventory_text", ""),
         include_lunch_leftovers=data.get("plan_include_lunch_leftovers", True),
+        include_breakfast=data.get("plan_include_breakfast", False),
         days=data.get("plan_days", 7),
     )
     await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
