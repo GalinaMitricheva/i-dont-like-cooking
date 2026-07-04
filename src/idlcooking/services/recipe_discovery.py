@@ -16,13 +16,37 @@ _FALLBACK_ACTIVE_TIME_MINUTES = 30
 # limited, or change markup), which is exactly why discovered recipes are cached in the
 # `recipes` table and SEED_RECIPES exists as a last-resort fallback (see RecipeDiscoveryService
 # and TelegramPlanningFacade._recipe_pool).
+#
+# Deliberately excluded after checking:
+# - damndelicious.net returns HTTP 403 on every request (including its homepage), i.e. it
+#   blocks the scraper outright rather than just missing schema on a given page.
+# - eatingwell.com: no working recipe URL found (404s and a 403 on the ones tried).
+# - bbcgoodfood.com's "healthy recipes" collection page is a category listing with no
+#   Recipe schema of its own; the site is already represented below via a recipe page.
 CURATED_RECIPE_URLS: tuple[str, ...] = (
     "https://www.allrecipes.com/recipe/16354/easy-meatloaf/",
     "https://www.allrecipes.com/recipe/158968/spinach-and-feta-turkey-burgers/",
     "https://www.bbcgoodfood.com/recipes/easy-pancakes",
     "https://cookieandkate.com/best-guacamole-recipe/",
+    "https://cookieandkate.com/easy-tomato-salad-recipe/",
+    "https://cookieandkate.com/simple-marinara-sauce-recipe/",
+    "https://cookieandkate.com/easy-refried-beans-recipe/",
     "https://www.loveandlemons.com/lentil-soup/",
     "https://www.loveandlemons.com/hummus-recipe/",
+    "https://www.budgetbytes.com/easy-crustless-quiche/",
+    "https://www.skinnytaste.com/air-fryer-chicken-thighs/",
+    "https://www.skinnytaste.com/blintz/",
+    "https://www.themediterraneandish.com/vegetable-frittata/",
+    "https://www.themediterraneandish.com/creamy-orzo-with-tomatoes/",
+    "https://www.wellplated.com/ground-beef-and-potatoes/",
+    "https://www.wellplated.com/baked-chicken-parmesan/",
+    "https://www.wellplated.com/smash-tacos/",
+    "https://downshiftology.com/recipes/shakshuka/",
+    "https://downshiftology.com/recipes/easy-roast-chicken/",
+    "https://downshiftology.com/recipes/best-ever-guacamole/",
+    "https://www.recipetineats.com/chicken-breast-recipe/",
+    "https://www.recipetineats.com/panna-cotta/",
+    "https://www.recipetineats.com/mashed-potato/",
 )
 
 
