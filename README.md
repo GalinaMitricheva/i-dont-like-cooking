@@ -63,6 +63,22 @@ Health checks:
 - `GET /health`
 - `GET /ready`
 
+Create or update a Telegram user's planning profile:
+
+```bash
+curl -X PUT http://127.0.0.1:8000/telegram-users/12345/profile ^
+  -H "Content-Type: application/json" ^
+  -d "{\"household_size\":1,\"cooking_effort_minutes\":20,\"allergies\":[],\"hard_restrictions\":[],\"disliked_ingredients\":[\"cilantro\"],\"favorite_tags\":[\"simple\"],\"activity_level\":\"light\",\"nutrition_goal\":\"reduce_waste\"}"
+```
+
+Generate and persist a first deterministic weekly plan:
+
+```bash
+curl -X POST http://127.0.0.1:8000/telegram-users/12345/plan ^
+  -H "Content-Type: application/json" ^
+  -d "{\"inventory\":[{\"name\":\"rice\",\"urgency\":2},{\"name\":\"eggs\"}],\"days\":7}"
+```
+
 Run the Telegram bot:
 
 ```bash
@@ -81,3 +97,4 @@ pytest
 - Optional calorie estimation using Mifflin-St Jeor when the user provides body metrics.
 - Deterministic recipe scoring that excludes allergies/restrictions/dislikes, rewards low effort, and prefers recipes using current inventory.
 - Shopping-list generation that marks already available ingredients.
+- SQLite persistence for Telegram users, profiles, schedules, generated planning cycles, menu items, and shopping list items.
