@@ -11,6 +11,14 @@ class MealType(StrEnum):
     SNACK = "snack"
 
 
+MEAL_TYPE_ORDER: dict[MealType, int] = {
+    MealType.BREAKFAST: 0,
+    MealType.LUNCH: 1,
+    MealType.DINNER: 2,
+    MealType.SNACK: 3,
+}
+
+
 @dataclass(frozen=True)
 class InventoryItem:
     name: str
@@ -80,7 +88,7 @@ def select_weekly_menu(
     profile: UserProfile,
     inventory: tuple[InventoryItem, ...] = (),
     days: int = 7,
-    meal_type: MealType = MealType.DINNER,
+    include_lunch_leftovers: bool = False,
 ) -> list[MenuItem]:
     scored = [
         (score_recipe(recipe, profile, inventory), recipe)
@@ -90,13 +98,33 @@ def select_weekly_menu(
     ranked = sorted(scored, key=lambda item: item[0], reverse=True)
     selected = ranked[:days]
 
-    return [
+    dinners = [
         MenuItem(
             day_index=index,
-            meal_type=meal_type,
+            meal_type=MealType.DINNER,
             recipe=recipe,
             score=score,
             reason="Low effort, profile-safe, and uses available food where possible.",
         )
         for index, (score, recipe) in enumerate(selected)
     ]
+
+    if not include_lunch_leftovers:
+        return dinners
+
+    lunches = [
+        MenuItem(
+            day_index=dinner.day_index + 1,
+            meal_type=MealType.LUNCH,
+            recipe=dinner.recipe,
+            score=dinner.score,
+            reason="Leftovers from the previous day's dinner.",
+        )
+        for dinner in dinners
+        if dinner.day_index + 1 < days
+    ]
+
+    return sorted(
+        dinners + lunches,
+        key=lambda item: (item.day_index, MEAL_TYPE_ORDER[item.meal_type]),
+    )

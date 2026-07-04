@@ -29,8 +29,22 @@ def test_telegram_planning_facade_generates_and_persists_plan() -> None:
     )
 
     assert summary.planning_cycle_id == 1
-    assert len(summary.menu_lines) == 7
+    # 7 dinners plus a leftover lunch for every day after the first.
+    assert len(summary.menu_lines) == 13
+    assert any("(dinner)" in line for line in summary.menu_lines)
+    assert any("(lunch)" in line for line in summary.menu_lines)
     assert any("already have" in line for line in summary.shopping_lines)
+
+
+def test_telegram_planning_facade_can_disable_lunch_leftovers() -> None:
+    facade = TelegramPlanningFacade("sqlite:///:memory:")
+
+    summary = facade.generate_plan_from_text_inventory(
+        telegram_user_id=12345, inventory_text="rice", include_lunch_leftovers=False
+    )
+
+    assert len(summary.menu_lines) == 7
+    assert all("(lunch)" not in line for line in summary.menu_lines)
 
 
 def test_telegram_planning_facade_returns_default_profile_summary() -> None:

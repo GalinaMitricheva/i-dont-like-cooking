@@ -1,4 +1,9 @@
-from idlcooking.domain.planning import InventoryItem, RecipeCandidate, select_weekly_menu
+from idlcooking.domain.planning import (
+    InventoryItem,
+    MealType,
+    RecipeCandidate,
+    select_weekly_menu,
+)
 from idlcooking.domain.profile import UserProfile
 from idlcooking.domain.shopping import build_shopping_list
 
@@ -52,3 +57,48 @@ def test_shopping_list_marks_inventory_as_already_available() -> None:
         ("eggs", False),
         ("rice", True),
     ]
+
+
+def test_lunch_leftovers_reuse_previous_days_dinner() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Rice eggs bowl",
+            source_url="https://example.com/rice-eggs",
+            ingredients=("rice", "eggs"),
+            active_time_minutes=12,
+        ),
+        RecipeCandidate(
+            title="Lentil soup",
+            source_url="https://example.com/lentil-soup",
+            ingredients=("lentils", "carrot"),
+            active_time_minutes=15,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=2, include_lunch_leftovers=True)
+
+    assert [(item.day_index, item.meal_type) for item in menu] == [
+        (0, MealType.DINNER),
+        (1, MealType.LUNCH),
+        (1, MealType.DINNER),
+    ]
+    # The day-1 lunch reuses the day-0 dinner recipe instead of a fresh selection.
+    assert menu[1].recipe == menu[0].recipe
+
+
+def test_lunch_leftovers_do_not_duplicate_shopping_list_items() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Rice eggs bowl",
+            source_url="https://example.com/rice-eggs",
+            ingredients=("rice", "eggs"),
+            active_time_minutes=12,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=2, include_lunch_leftovers=True)
+    shopping_list = build_shopping_list(menu)
+
+    assert [item.name for item in shopping_list] == ["eggs", "rice"]

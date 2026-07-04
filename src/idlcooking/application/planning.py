@@ -79,7 +79,14 @@ class PlanningService:
         profile: UserProfile,
         inventory: tuple[InventoryItem, ...] = (),
         days: int = 7,
+        include_lunch_leftovers: bool = False,
     ) -> GeneratedPlan:
-        menu = select_weekly_menu(list(self.recipes), profile, inventory, days=days)
+        menu = select_weekly_menu(
+            list(self.recipes),
+            profile,
+            inventory,
+            days=days,
+            include_lunch_leftovers=include_lunch_leftovers,
+        )
         shopping_list = build_shopping_list(menu, inventory)
         return GeneratedPlan(menu=menu, shopping_list=shopping_list)

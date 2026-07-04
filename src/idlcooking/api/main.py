@@ -101,7 +101,12 @@ def create_app() -> FastAPI:
             )
             for item in payload.inventory
         )
-        generated = planning.generate_weekly_plan(profile, inventory, days=payload.days)
+        generated = planning.generate_weekly_plan(
+            profile,
+            inventory,
+            days=payload.days,
+            include_lunch_leftovers=payload.include_lunch_leftovers,
+        )
         planning_cycle_id = cycles.save_generated_plan(user_id, generated)
         return GeneratedPlanResponse(
             telegram_user_id=telegram_user_id,

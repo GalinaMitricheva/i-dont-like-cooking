@@ -130,6 +130,7 @@ class TelegramPlanningFacade:
         self,
         telegram_user_id: int,
         inventory_text: str = "",
+        include_lunch_leftovers: bool = True,
     ) -> TelegramPlanSummary:
         user_id = self.ensure_user_defaults(telegram_user_id)
         profile = self.profiles.get_profile(user_id) or UserProfile()
@@ -138,11 +139,14 @@ class TelegramPlanningFacade:
             for name in inventory_text.replace(";", ",").split(",")
             if name.strip()
         )
-        generated = self.planning.generate_weekly_plan(profile, inventory, days=7)
+        generated = self.planning.generate_weekly_plan(
+            profile, inventory, days=7, include_lunch_leftovers=include_lunch_leftovers
+        )
         planning_cycle_id = self.cycles.save_generated_plan(user_id, generated)
 
         menu_lines = tuple(
-            f"{item.day_index + 1}. {item.recipe.title} ({item.recipe.active_time_minutes} min)"
+            f"Day {item.day_index + 1} ({item.meal_type.value}): {item.recipe.title} "
+            f"({item.recipe.active_time_minutes} min)"
             for item in generated.menu
         )
         shopping_lines = tuple(

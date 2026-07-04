@@ -27,6 +27,7 @@ class InventoryItemPayload(BaseModel):
 class GeneratePlanPayload(BaseModel):
     inventory: list[InventoryItemPayload] = Field(default_factory=list)
     days: int = Field(default=7, ge=1, le=7)
+    include_lunch_leftovers: bool = True
 
 
 class MenuItemResponse(BaseModel):
