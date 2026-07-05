@@ -22,7 +22,8 @@ See [Product requirements](docs/product-requirements.md) for the full product vi
 
 - `/start` — consent, then (first time only) the onboarding questionnaire.
 - `/plan [inventory]` — asks how many days to plan for and which meals to include (lunch only / + breakfast / + dinner leftovers / all three), then generates a draft plan. A draft offers Accept menu, Regenerate, Show shopping list, and View recipes; once accepted, Accept/Regenerate drop away and Rate your meals appears. Optionally list food you already have, e.g. `/plan rice, eggs, cucumber`.
-- `/schedule` — show the current weekly planning schedule. `/schedule <weekday> <HH:MM> [timezone]` (e.g. `/schedule saturday 09:00 Europe/Berlin`) to change it.
+- `/currentplan` — show your active (accepted) menu at a glance: the meals, which day of the plan you're on ("day X of N"), and when the next menu arrives (also your cue to rate this one). Points you at `/plan` if nothing is accepted yet.
+- `/schedule` — show the current weekly planning schedule. `/schedule <weekday> <HH:MM> [timezone]` (e.g. `/schedule saturday 09:00 Europe/Berlin`) to change it. The weekday accepts a name or a number (Monday=0…Sunday=6), and a timezone pasted back with parentheses (as the bot displays it) is accepted.
 - `/profile` — view the saved profile.
 - `/feedback` — rate the latest plan's meals one at a time (liked / okay / too much effort / too expensive / didn't cook it); feeds into future recipe ranking.
 - `/fridge` — currently a placeholder pointing at typing inventory into `/plan`; photo-based fridge recognition is not implemented (see Known Gaps).

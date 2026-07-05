@@ -165,6 +165,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         sql="ALTER TABLE menu_items ADD COLUMN steps_summary TEXT NOT NULL DEFAULT '';",
         is_applied=lambda c: _column_exists(c, "menu_items", "steps_summary"),
     ),
+    Migration(
+        description="add planning_cycles.accepted_at",
+        sql="ALTER TABLE planning_cycles ADD COLUMN accepted_at TEXT;",
+        is_applied=lambda c: _column_exists(c, "planning_cycles", "accepted_at"),
+    ),
 )
 
 

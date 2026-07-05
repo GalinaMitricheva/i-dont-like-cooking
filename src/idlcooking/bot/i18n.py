@@ -21,6 +21,18 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_accepted_toast": "Menu accepted!",
         "plan_not_accepted_yet_toast": "Accept your menu first, then you can rate it.",
         "plan_no_recipes": "No recipes to show yet — try /plan first.",
+        "current_plan": (
+            "Here's your current menu — day {current_day} of {total_days}:\n\n{menu}\n\n"
+            "Next menu (and time to rate this one): {next_planning}"
+        ),
+        "current_plan_complete": (
+            "Your current menu is complete — all {total_days} days are behind you:\n\n{menu}\n\n"
+            "Next menu (and time to rate this one): {next_planning}"
+        ),
+        "current_plan_next_unknown": "not scheduled (set one with /schedule)",
+        "current_plan_none": (
+            "You don't have an accepted menu yet. Run /plan and tap Accept menu to start one."
+        ),
         "recipe_view_day_header": "Day {day}",
         "recipe_view_previous_button": "◀ Previous day",
         "recipe_view_next_button": "Next day ▶",
@@ -149,6 +161,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "help": "Here's what I can do:\n\n{commands}",
         "help_cmd_start": "Begin or restart onboarding",
         "help_cmd_plan": "Generate a weekly menu and shopping list",
+        "help_cmd_currentplan": "Show your active menu and which day you're on",
         "help_cmd_schedule": "View or change your weekly planning schedule",
         "help_cmd_profile": "View your saved profile",
         "help_cmd_feedback": "Rate how this week's meals went",

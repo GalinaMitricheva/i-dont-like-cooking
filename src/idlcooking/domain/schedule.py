@@ -18,10 +18,18 @@ def weekday_name(weekday: int) -> str:
 
 
 def parse_weekday(value: str) -> int:
+    """Parse a weekday from a name ("saturday") or a Monday=0..Sunday=6 index ("5").
+
+    Numeric input follows the same Monday=0 convention as `PlanningSchedule.weekday`
+    and Python's `date.weekday()`; the confirmation message echoes the resolved name so
+    a user who meant a different numbering sees it immediately.
+    """
     normalized = value.strip().lower()
-    if normalized not in WEEKDAY_NAMES:
-        raise ValueError(f"Unknown weekday: {value!r}")
-    return WEEKDAY_NAMES.index(normalized)
+    if normalized in WEEKDAY_NAMES:
+        return WEEKDAY_NAMES.index(normalized)
+    if normalized.isdigit() and 0 <= int(normalized) < len(WEEKDAY_NAMES):
+        return int(normalized)
+    raise ValueError(f"Unknown weekday: {value!r}")
 
 
 @dataclass(frozen=True)

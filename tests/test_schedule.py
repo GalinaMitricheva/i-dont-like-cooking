@@ -58,3 +58,15 @@ def test_parse_weekday_accepts_case_insensitive_names() -> None:
 def test_parse_weekday_rejects_unknown_names() -> None:
     with pytest.raises(ValueError):
         parse_weekday("someday")
+
+
+def test_parse_weekday_accepts_numeric_index_monday_zero() -> None:
+    # Issue #34: users try "/schedule 5 ...". Numeric follows Monday=0..Sunday=6.
+    assert parse_weekday("0") == 0
+    assert parse_weekday("5") == 5
+    assert parse_weekday("6") == 6
+
+
+def test_parse_weekday_rejects_out_of_range_numbers() -> None:
+    with pytest.raises(ValueError):
+        parse_weekday("7")

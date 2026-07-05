@@ -374,6 +374,36 @@ class PlanningCycleRepository:
         ).fetchone()
         return int(row["id"]) if row else None
 
+    def get_latest_cycle(self, user_id: int) -> dict[str, object] | None:
+        row = self.connection.execute(
+            """
+            SELECT id, status, generated_at, accepted_at
+            FROM planning_cycles
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": int(row["id"]),
+            "status": row["status"],
+            "generated_at": row["generated_at"],
+            "accepted_at": row["accepted_at"],
+        }
+
+    def get_menu_day_count(self, planning_cycle_id: int) -> int:
+        """Number of days the plan covers, derived from the persisted menu items."""
+        row = self.connection.execute(
+            "SELECT MAX(day_index) AS max_day FROM menu_items WHERE planning_cycle_id = ?",
+            (planning_cycle_id,),
+        ).fetchone()
+        if row is None or row["max_day"] is None:
+            return 0
+        return int(row["max_day"]) + 1
+
     def get_latest_cycle_menu_items(
         self, user_id: int
     ) -> tuple[int, list[dict[str, str]]] | None:
@@ -425,10 +455,23 @@ class PlanningCycleRepository:
         return grouped
 
     def mark_cycle_status(self, planning_cycle_id: int, status: str) -> None:
-        self.connection.execute(
-            "UPDATE planning_cycles SET status = ? WHERE id = ?",
-            (status, planning_cycle_id),
-        )
+        # Stamp accepted_at the first time a cycle is accepted so "day X of the plan"
+        # can be measured from acceptance (issue #35). COALESCE keeps the original
+        # timestamp if the same cycle is somehow accepted twice.
+        if status == "accepted":
+            self.connection.execute(
+                """
+                UPDATE planning_cycles
+                SET status = ?, accepted_at = COALESCE(accepted_at, CURRENT_TIMESTAMP)
+                WHERE id = ?
+                """,
+                (status, planning_cycle_id),
+            )
+        else:
+            self.connection.execute(
+                "UPDATE planning_cycles SET status = ? WHERE id = ?",
+                (status, planning_cycle_id),
+            )
         self.connection.commit()
 
     def get_shopping_list_lines(self, planning_cycle_id: int) -> list[dict[str, object]]:

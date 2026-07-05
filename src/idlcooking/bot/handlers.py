@@ -49,6 +49,7 @@ _FEEDBACK_BACK_CALLBACK = "feedback:back"
 _COMMAND_NAMES: tuple[str, ...] = (
     "start",
     "plan",
+    "currentplan",
     "schedule",
     "profile",
     "feedback",
@@ -916,6 +917,32 @@ async def plan_rate_callback(
     await callback.answer()
 
 
+@router.message(Command("currentplan"))
+async def current_plan(message: Message, planning_facade: TelegramPlanningFacade) -> None:
+    language = _resolve_message_language(message)
+    if not await _require_consent(message, planning_facade, language):
+        return
+    status = planning_facade.get_current_plan_status(_telegram_user_id(message))
+    if status is None:
+        await message.answer(
+            _terminal_text(language, t(language, "current_plan_none"), has_keyboard=False)
+        )
+        return
+
+    menu = "\n".join(status.menu_lines)
+    next_planning = status.next_planning_at or t(language, "current_plan_next_unknown")
+    text = t(
+        language,
+        "current_plan_complete" if status.plan_complete else "current_plan",
+        current_day=status.current_day,
+        total_days=status.total_days,
+        menu=menu,
+        next_planning=next_planning,
+    )
+    # Reuse the accepted-plan keyboard so shopping list / recipes / rate are one tap away.
+    await message.answer(text, reply_markup=plan_keyboard(language, accepted=True))
+
+
 @router.message(Command("schedule"))
 async def schedule(message: Message, planning_facade: TelegramPlanningFacade) -> None:
     language = _resolve_message_language(message)
@@ -945,8 +972,12 @@ async def schedule(message: Message, planning_facade: TelegramPlanningFacade) ->
         return
 
     weekday_token, time_token, *timezone_parts = parts
+    # Tolerate the exact form the bot displays back to the user, e.g. the timezone
+    # shown as "(Europe/Berlin)" and a weekday copied with a trailing comma — otherwise
+    # pasting the summary straight back fails (issue #34).
+    weekday_token = weekday_token.strip(" ,")
     timezone_name = (
-        timezone_parts[0]
+        timezone_parts[0].strip(" ()")
         if timezone_parts
         else planning_facade.get_schedule_summary(telegram_user_id).timezone
     )

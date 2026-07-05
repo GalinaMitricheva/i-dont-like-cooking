@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 
@@ -11,7 +12,9 @@ from idlcooking.bot.handlers import (
     _resolve_message_language,
     _terminal_text,
     bot_commands,
+    current_plan,
     plan_keyboard,
+    schedule,
 )
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
@@ -40,6 +43,7 @@ def test_bot_commands_lists_every_expected_command_with_a_description() -> None:
     assert [name for name, _ in commands] == [
         "start",
         "plan",
+        "currentplan",
         "schedule",
         "profile",
         "feedback",
@@ -443,3 +447,138 @@ def test_telegram_planning_facade_new_schedule_is_not_immediately_due() -> None:
 
     facade.mark_schedule_triggered(1, a_week_and_a_day_later)
     assert facade.get_due_telegram_user_ids(a_week_and_a_day_later) == []
+
+
+class _FakeMessage:
+    """Minimal stand-in for aiogram's Message for exercising command handlers."""
+
+    def __init__(self, text: str, telegram_user_id: int = 1, language_code: str = "en") -> None:
+        self.text = text
+        self.from_user = SimpleNamespace(id=telegram_user_id, language_code=language_code)
+        self.answers: list[str] = []
+        self.markups: list[object] = []
+
+    async def answer(self, text: str, **kwargs: object) -> None:
+        self.answers.append(text)
+        self.markups.append(kwargs.get("reply_markup"))
+
+
+def test_schedule_accepts_the_parenthesized_timezone_the_bot_displays() -> None:
+    # Issue #34: the summary shows "(Europe/Berlin)", so pasting that form back must work.
+    facade = _offline_facade()
+    facade.record_consent(1)
+
+    message = _FakeMessage("/schedule Friday 09:00 (Europe/Berlin)")
+    asyncio.run(schedule(message, facade))
+
+    summary = facade.get_schedule_summary(1)
+    assert summary.weekday_name == "Friday"
+    assert summary.timezone == "Europe/Berlin"
+    assert any("Schedule updated" in answer for answer in message.answers)
+
+
+def test_schedule_accepts_a_numeric_weekday() -> None:
+    # Issue #34: users reasonably try "/schedule 5 ..."; 5 == Saturday (Monday=0).
+    facade = _offline_facade()
+    facade.record_consent(1)
+
+    message = _FakeMessage("/schedule 5 09:00 Europe/Berlin")
+    asyncio.run(schedule(message, facade))
+
+    assert facade.get_schedule_summary(1).weekday_name == "Saturday"
+
+
+def test_current_plan_is_none_until_a_plan_is_accepted() -> None:
+    facade = _offline_facade()
+
+    assert facade.get_current_plan_status(telegram_user_id=1) is None
+
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    # Generated but not yet accepted -> still nothing to show as the "current" plan.
+    assert facade.get_current_plan_status(telegram_user_id=1) is None
+
+
+def test_current_plan_reports_day_one_and_total_after_acceptance() -> None:
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+
+    status = facade.get_current_plan_status(telegram_user_id=1)
+
+    assert status is not None
+    assert status.total_days == 3
+    assert status.current_day == 1
+    assert status.plan_complete is False
+    assert status.menu_lines
+    assert status.next_planning_at is not None
+
+
+def test_current_plan_marks_completion_past_the_last_day() -> None:
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+
+    status = facade.get_current_plan_status(
+        telegram_user_id=1, now=datetime.now(UTC) + timedelta(days=10)
+    )
+
+    assert status is not None
+    assert status.total_days == 3
+    assert status.current_day == 3  # clamped to the last day
+    assert status.plan_complete is True
+
+
+def test_current_plan_handler_points_to_plan_when_nothing_accepted() -> None:
+    facade = _offline_facade()
+    facade.record_consent(1)
+
+    message = _FakeMessage("/currentplan")
+    asyncio.run(current_plan(message, facade))
+
+    assert len(message.answers) == 1
+    assert "/plan" in message.answers[0]
+    # The fallback has no keyboard of its own, so it appends the /help pointer.
+    assert message.markups[0] is None
+
+
+def test_current_plan_handler_renders_the_accepted_menu_with_actions() -> None:
+    facade = _offline_facade()
+    facade.record_consent(1)
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+
+    message = _FakeMessage("/currentplan")
+    asyncio.run(current_plan(message, facade))
+
+    assert len(message.answers) == 1
+    assert "day 1 of 3" in message.answers[0]
+    # Reuses the accepted-plan keyboard so shopping list / recipes / rate are reachable.
+    callback_data = [
+        button.callback_data
+        for row in message.markups[0].inline_keyboard
+        for button in row
+    ]
+    assert _PLAN_RATE_CALLBACK in callback_data
+
+
+def test_accepting_a_cycle_stamps_accepted_at() -> None:
+    # Issue #35: "current day" is measured from acceptance, so accept must record a time.
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+    user_id = facade.users.get_user_id_by_telegram_id(1)
+
+    assert facade.cycles.get_latest_cycle(user_id)["accepted_at"] is None
+
+    facade.accept_latest_cycle(telegram_user_id=1)
+
+    assert facade.cycles.get_latest_cycle(user_id)["accepted_at"] is not None

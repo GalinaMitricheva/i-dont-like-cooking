@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+from zoneinfo import ZoneInfo
 
 from idlcooking.application.planning import SEED_RECIPES, PlanningService
 from idlcooking.domain.feedback import Rating, RecipeFeedback
@@ -67,6 +68,15 @@ class TelegramPlanSummary:
     planning_cycle_id: int
     menu_lines: tuple[str, ...]
     shopping_lines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TelegramCurrentPlanStatus:
+    menu_lines: tuple[str, ...]
+    current_day: int
+    total_days: int
+    plan_complete: bool
+    next_planning_at: str | None
 
 
 @dataclass(frozen=True)
@@ -325,6 +335,55 @@ class TelegramPlanningFacade:
         user_id = self.ensure_user_defaults(telegram_user_id)
         summary = self.cycles.get_latest_cycle_summary(user_id)
         return summary is not None and summary["status"] == "accepted"
+
+    def get_current_plan_status(
+        self, telegram_user_id: int, now: datetime | None = None
+    ) -> TelegramCurrentPlanStatus | None:
+        """Status of the user's active (accepted) plan for the /currentplan command.
+
+        Returns None when there is no accepted plan yet, so the caller can steer the
+        user to /plan. "Current day" is counted from acceptance (issue #35), measured
+        in the schedule's timezone so day boundaries match the user's local calendar.
+        """
+        now = now or datetime.now(UTC)
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        cycle = self.cycles.get_latest_cycle(user_id)
+        if cycle is None or cycle["status"] != "accepted":
+            return None
+
+        summary = self.get_latest_plan_summary(telegram_user_id)
+        menu_lines = summary.menu_lines if summary else ()
+        total_days = self.cycles.get_menu_day_count(int(cycle["id"]))
+
+        schedule = self.schedules.get_schedule(user_id) or PlanningSchedule()
+        zone = ZoneInfo(schedule.timezone)
+        started = cycle["accepted_at"] or cycle["generated_at"]
+        current_day = 1
+        if started:
+            # SQLite CURRENT_TIMESTAMP is naive UTC ("YYYY-MM-DD HH:MM:SS").
+            started_date = (
+                datetime.fromisoformat(str(started)).replace(tzinfo=UTC).astimezone(zone).date()
+            )
+            today = now.astimezone(zone).date()
+            current_day = max(1, (today - started_date).days + 1)
+
+        plan_complete = total_days > 0 and current_day > total_days
+        displayed_day = min(current_day, total_days) if total_days else current_day
+
+        next_run = schedule.next_run_after(now)
+        next_planning_at = (
+            f"{next_run.strftime('%A, %d %b %H:%M')} ({schedule.timezone})"
+            if next_run is not None
+            else None
+        )
+
+        return TelegramCurrentPlanStatus(
+            menu_lines=menu_lines,
+            current_day=displayed_day,
+            total_days=total_days,
+            plan_complete=plan_complete,
+            next_planning_at=next_planning_at,
+        )
 
     def get_latest_shopping_list_lines(self, telegram_user_id: int) -> tuple[str, ...]:
         user_id = self.ensure_user_defaults(telegram_user_id)
