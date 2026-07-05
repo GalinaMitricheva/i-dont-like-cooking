@@ -170,6 +170,11 @@ MIGRATIONS: tuple[Migration, ...] = (
         sql="ALTER TABLE planning_cycles ADD COLUMN accepted_at TEXT;",
         is_applied=lambda c: _column_exists(c, "planning_cycles", "accepted_at"),
     ),
+    Migration(
+        description="add planning_cycles.feedback_requested_at",
+        sql="ALTER TABLE planning_cycles ADD COLUMN feedback_requested_at TEXT;",
+        is_applied=lambda c: _column_exists(c, "planning_cycles", "feedback_requested_at"),
+    ),
 )
 
 

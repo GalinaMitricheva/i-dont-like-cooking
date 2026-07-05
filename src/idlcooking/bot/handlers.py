@@ -43,6 +43,7 @@ _RECIPE_VIEW_PREFIX = "plan:recipe_view:"
 _PLAN_BACK_TO_MENU_CALLBACK = "plan:back_to_menu"
 _PLAN_BACK_TO_DAYS_CALLBACK = "plan:back_to_days"
 _FEEDBACK_BACK_CALLBACK = "feedback:back"
+_FEEDBACK_START_PREFIX = "feedback:start:"
 
 # Command names shared between /help and the Telegram native command menu
 # (Bot.set_my_commands in bot/main.py), so the two can never drift apart.
@@ -931,9 +932,15 @@ async def current_plan(message: Message, planning_facade: TelegramPlanningFacade
 
     menu = "\n".join(status.menu_lines)
     next_planning = status.next_planning_at or t(language, "current_plan_next_unknown")
+    if status.not_started:
+        template = "current_plan_not_started"
+    elif status.plan_complete:
+        template = "current_plan_complete"
+    else:
+        template = "current_plan"
     text = t(
         language,
-        "current_plan_complete" if status.plan_complete else "current_plan",
+        template,
         current_day=status.current_day,
         total_days=status.total_days,
         menu=menu,
@@ -1058,8 +1065,14 @@ async def _start_feedback_flow(
     state: FSMContext,
     telegram_user_id: int,
     language: str,
+    planning_cycle_id: int | None = None,
 ) -> None:
-    targets = planning_facade.get_latest_cycle_feedback_targets(telegram_user_id)
+    # A scheduled feedback request (issue #37) targets a specific cycle; /feedback and the
+    # post-acceptance Rate button default to whatever the latest cycle is.
+    if planning_cycle_id is None:
+        targets = planning_facade.get_latest_cycle_feedback_targets(telegram_user_id)
+    else:
+        targets = planning_facade.get_cycle_feedback_targets(telegram_user_id, planning_cycle_id)
     if targets is None or not targets[1]:
         await message.answer(t(language, "feedback_no_cycle"))
         return
@@ -1074,6 +1087,20 @@ async def _start_feedback_flow(
     await _send_next_feedback_prompt(message, state, language)
 
 
+def feedback_request_keyboard(language: str, planning_cycle_id: int) -> InlineKeyboardMarkup:
+    """One-tap entry into rating a specific cycle, used by the scheduled request (issue #37)."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t(language, "plan_rate_button"),
+                    callback_data=f"{_FEEDBACK_START_PREFIX}{planning_cycle_id}",
+                )
+            ]
+        ]
+    )
+
+
 @router.message(Command("feedback"))
 async def feedback(
     message: Message, planning_facade: TelegramPlanningFacade, state: FSMContext
@@ -1083,6 +1110,34 @@ async def feedback(
         return
     telegram_user_id = _telegram_user_id(message)
     await _start_feedback_flow(message, planning_facade, state, telegram_user_id, language)
+
+
+@router.callback_query(F.data.startswith(_FEEDBACK_START_PREFIX))
+async def feedback_start_callback(
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
+) -> None:
+    if (
+        callback.from_user is None
+        or not isinstance(callback.message, Message)
+        or callback.data is None
+    ):
+        await callback.answer()
+        return
+    language = resolve_language(callback.from_user.language_code)
+    try:
+        planning_cycle_id = int(callback.data.removeprefix(_FEEDBACK_START_PREFIX))
+    except ValueError:
+        await callback.answer()
+        return
+    await _start_feedback_flow(
+        callback.message,
+        planning_facade,
+        state,
+        callback.from_user.id,
+        language,
+        planning_cycle_id=planning_cycle_id,
+    )
+    await callback.answer()
 
 
 @router.callback_query(FeedbackStates.reviewing, F.data == _FEEDBACK_BACK_CALLBACK)

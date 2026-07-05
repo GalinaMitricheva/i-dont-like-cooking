@@ -2,13 +2,29 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, MenuButtonCommands
 
 from idlcooking.bot.handlers import bot_commands, router
 from idlcooking.bot.i18n import DEFAULT_LANGUAGE
 from idlcooking.bot.planning import TelegramPlanningFacade
 from idlcooking.config import get_settings
 from idlcooking.scheduler import create_scheduler, register_scheduled_jobs
+
+
+async def configure_bot_commands(bot: Bot) -> None:
+    """Register the command list and pin the chat "Menu" button to it (issue #36).
+
+    Setting commands alone isn't enough: the chat menu button is separate bot state,
+    and once it has been left as the default attachment button it never reverts on its
+    own. Explicitly setting MenuButtonCommands makes the "Menu" button deterministic.
+    """
+    await bot.set_my_commands(
+        [
+            BotCommand(command=command, description=description)
+            for command, description in bot_commands(DEFAULT_LANGUAGE)
+        ]
+    )
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
 
 async def run_bot() -> None:
@@ -18,12 +34,7 @@ async def run_bot() -> None:
 
     logging.basicConfig(level=logging.INFO)
     bot = Bot(token=settings.telegram_bot_token)
-    await bot.set_my_commands(
-        [
-            BotCommand(command=command, description=description)
-            for command, description in bot_commands(DEFAULT_LANGUAGE)
-        ]
-    )
+    await configure_bot_commands(bot)
     planning_facade = TelegramPlanningFacade(settings.database_url)
     dispatcher = Dispatcher()
     dispatcher["planning_facade"] = planning_facade

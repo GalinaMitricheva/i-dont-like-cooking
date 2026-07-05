@@ -18,9 +18,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_shopping_list_button": "\U0001F6D2 Show shopping list",
         "plan_recipes_button": "\U0001F4D6 View recipes",
         "plan_rate_button": "\U0001F4DD Rate your meals",
-        "plan_accepted_toast": "Menu accepted!",
+        "plan_accepted_toast": "Menu accepted! Your plan starts tomorrow.",
         "plan_not_accepted_yet_toast": "Accept your menu first, then you can rate it.",
         "plan_no_recipes": "No recipes to show yet — try /plan first.",
+        "current_plan_not_started": (
+            "Here's your menu — it starts tomorrow ({total_days} days):\n\n{menu}\n\n"
+            "Next menu (and time to rate this one): {next_planning}"
+        ),
         "current_plan": (
             "Here's your current menu — day {current_day} of {total_days}:\n\n{menu}\n\n"
             "Next menu (and time to rate this one): {next_planning}"
@@ -148,6 +152,10 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Thanks! Your profile is saved.\n\n"
             "Start with /plan to get your first weekly menu and shopping list. If you want to "
             "account for food you already have, write:\n/plan rice, eggs, cucumber"
+        ),
+        "feedback_request": (
+            "Your last menu has wrapped up — how did the meals go? Tap below to rate them; "
+            "it helps me pick better recipes next time."
         ),
         "feedback_no_cycle": "You don't have a recent plan to review yet. Try /plan first.",
         "feedback_prompt": "How was {title}?",

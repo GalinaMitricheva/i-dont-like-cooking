@@ -404,6 +404,72 @@ class PlanningCycleRepository:
             return 0
         return int(row["max_day"]) + 1
 
+    def get_latest_accepted_cycles_awaiting_feedback(self) -> list[dict[str, object]]:
+        """Each user's most recent accepted cycle that hasn't had a feedback request yet.
+
+        Only the latest accepted cycle per user is considered, so a plan that was
+        superseded by a newer accepted one is skipped rather than nagged about (issue #37).
+        """
+        rows = self.connection.execute(
+            """
+            SELECT
+                planning_cycles.id AS id,
+                planning_cycles.user_id AS user_id,
+                users.telegram_user_id AS telegram_user_id,
+                planning_cycles.accepted_at AS accepted_at
+            FROM planning_cycles
+            JOIN users ON users.id = planning_cycles.user_id
+            WHERE planning_cycles.id IN (
+                SELECT MAX(id) FROM planning_cycles WHERE status = 'accepted' GROUP BY user_id
+            )
+            AND planning_cycles.feedback_requested_at IS NULL
+            """
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "user_id": int(row["user_id"]),
+                "telegram_user_id": int(row["telegram_user_id"]),
+                "accepted_at": row["accepted_at"],
+            }
+            for row in rows
+        ]
+
+    def mark_feedback_requested(self, planning_cycle_id: int) -> None:
+        self.connection.execute(
+            """
+            UPDATE planning_cycles
+            SET feedback_requested_at = COALESCE(feedback_requested_at, CURRENT_TIMESTAMP)
+            WHERE id = ?
+            """,
+            (planning_cycle_id,),
+        )
+        self.connection.commit()
+
+    def get_cycle_menu_items(
+        self, planning_cycle_id: int, user_id: int
+    ) -> list[dict[str, str]]:
+        """Distinct (title, source_url) for a specific cycle owned by `user_id`.
+
+        Ownership is enforced here so a crafted callback can't pull another user's cycle.
+        """
+        owner = self.connection.execute(
+            "SELECT user_id FROM planning_cycles WHERE id = ?",
+            (planning_cycle_id,),
+        ).fetchone()
+        if owner is None or int(owner["user_id"]) != user_id:
+            return []
+        item_rows = self.connection.execute(
+            """
+            SELECT DISTINCT title, source_url
+            FROM menu_items
+            WHERE planning_cycle_id = ?
+            ORDER BY id ASC
+            """,
+            (planning_cycle_id,),
+        ).fetchall()
+        return [{"title": row["title"], "source_url": row["source_url"]} for row in item_rows]
+
     def get_latest_cycle_menu_items(
         self, user_id: int
     ) -> tuple[int, list[dict[str, str]]] | None:

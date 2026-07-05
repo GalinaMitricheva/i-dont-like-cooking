@@ -13,7 +13,7 @@ The MVP is implemented. The Telegram bot supports the full weekly planning loop 
 - Weekly plan generation anchored on lunch, with optional dinner leftovers (reusing the same day's lunch) and optional breakfast, drawn from a recipe pool that's scraped from a curated set of real recipe sites and cached in SQLite, falling back to a small bundled recipe set if scraping is unavailable.
 - A categorized, quantity-aware shopping list (produce/protein/dairy and eggs/grains and bakery/frozen/spices and sauces/other), with quantities summed across recipes where units match.
 - A day-by-day recipe viewer (ingredients, steps summary, source link) with Previous/Next navigation.
-- An end-of-cycle feedback command that re-ranks future plans based on what you liked or disliked.
+- Feedback that re-ranks future plans based on what you liked or disliked — available on demand (`/feedback`) and requested automatically the day after a plan's period ends.
 - Data deletion on request.
 
 See [Product requirements](docs/product-requirements.md) for the full product vision, and the repository's GitHub issues for what's shipped vs. still planned. The "MVP v0.1" milestone is fully closed; everything tracked after it is a refinement or a deliberately deferred later-milestone feature (local fridge-photo vision, structured logging, schema migrations, and recipe pool growth).
@@ -22,7 +22,7 @@ See [Product requirements](docs/product-requirements.md) for the full product vi
 
 - `/start` — consent, then (first time only) the onboarding questionnaire.
 - `/plan [inventory]` — asks how many days to plan for and which meals to include (lunch only / + breakfast / + dinner leftovers / all three), then generates a draft plan. A draft offers Accept menu, Regenerate, Show shopping list, and View recipes; once accepted, Accept/Regenerate drop away and Rate your meals appears. Optionally list food you already have, e.g. `/plan rice, eggs, cucumber`.
-- `/currentplan` — show your active (accepted) menu at a glance: the meals, which day of the plan you're on ("day X of N"), and when the next menu arrives (also your cue to rate this one). Points you at `/plan` if nothing is accepted yet.
+- `/currentplan` — show your active (accepted) menu at a glance: the meals, which day of the plan you're on ("day X of N", or "starts tomorrow" on the acceptance day — the period begins the day after you accept), and when the next menu arrives (also your cue to rate this one). Points you at `/plan` if nothing is accepted yet.
 - `/schedule` — show the current weekly planning schedule. `/schedule <weekday> <HH:MM> [timezone]` (e.g. `/schedule saturday 09:00 Europe/Berlin`) to change it. The weekday accepts a name or a number (Monday=0…Sunday=6), and a timezone pasted back with parentheses (as the bot displays it) is accepted.
 - `/profile` — view the saved profile.
 - `/feedback` — rate the latest plan's meals one at a time (liked / okay / too much effort / too expensive / didn't cook it); feeds into future recipe ranking.
@@ -123,7 +123,7 @@ pytest
 - Multi-meal-type planning: lunch (always, the primary anchor meal), optional dinner as a same-day leftover of that day's lunch (no extra shopping), and optional breakfast. Meal selection cycles through the ranked candidate pool so every requested day is filled, with no adjacent-day repeats unless only a single recipe is available; breakfast prefers recipes tagged "breakfast" and falls back to the general pool if nothing is tagged.
 - Shopping-list generation with best-effort quantity parsing from free-text ingredient lines, quantities summed across recipes when units match, category grouping (produce/protein/dairy and eggs/grains and bakery/pantry/frozen/spices and sauces/other), and spices/sauces marked optional.
 - Web recipe discovery via `recipe-scrapers` against a curated allow-list of verified recipe URLs, cached in SQLite so repeat plans don't re-scrape, with a bundled seed-recipe fallback if discovery fails entirely.
-- End-of-cycle feedback (liked/neutral/disliked/too much effort/too expensive/skipped) that adjusts future recipe ranking per user.
+- Feedback (liked/neutral/disliked/too much effort/too expensive/skipped) that adjusts future recipe ranking per user, collected on demand or via an automatic request the day after a plan's period ends (the period itself starts the day after the menu is accepted). The request is idempotent (tracked via `feedback_requested_at`) and targets the specific finished cycle.
 - SQLite persistence for Telegram users, profiles, schedules, generated planning cycles, menu items (including recipe steps summaries), shopping list items, cached discovered recipes, and feedback.
 
 ## Known Gaps

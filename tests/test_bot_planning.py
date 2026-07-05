@@ -500,7 +500,9 @@ def test_current_plan_is_none_until_a_plan_is_accepted() -> None:
     assert facade.get_current_plan_status(telegram_user_id=1) is None
 
 
-def test_current_plan_reports_day_one_and_total_after_acceptance() -> None:
+def test_current_plan_has_not_started_on_the_acceptance_day() -> None:
+    # Issue #38: the period begins the day *after* acceptance, so on the acceptance
+    # day the plan hasn't started yet.
     facade = _offline_facade()
     facade.generate_plan_from_text_inventory(
         telegram_user_id=1, days=3, include_dinner_leftovers=False
@@ -511,10 +513,28 @@ def test_current_plan_reports_day_one_and_total_after_acceptance() -> None:
 
     assert status is not None
     assert status.total_days == 3
-    assert status.current_day == 1
+    assert status.not_started is True
     assert status.plan_complete is False
     assert status.menu_lines
     assert status.next_planning_at is not None
+
+
+def test_current_plan_counts_day_one_from_the_day_after_acceptance() -> None:
+    # Issue #38: the day after acceptance (A+1) is Day 1 of N.
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+
+    status = facade.get_current_plan_status(
+        telegram_user_id=1, now=datetime.now(UTC) + timedelta(days=1)
+    )
+
+    assert status is not None
+    assert status.not_started is False
+    assert status.current_day == 1
+    assert status.plan_complete is False
 
 
 def test_current_plan_marks_completion_past_the_last_day() -> None:
@@ -524,12 +544,14 @@ def test_current_plan_marks_completion_past_the_last_day() -> None:
     )
     facade.accept_latest_cycle(telegram_user_id=1)
 
+    # Acceptance day A; days 1..3 are A+1..A+3; A+10 is well past the end.
     status = facade.get_current_plan_status(
         telegram_user_id=1, now=datetime.now(UTC) + timedelta(days=10)
     )
 
     assert status is not None
     assert status.total_days == 3
+    assert status.not_started is False
     assert status.current_day == 3  # clamped to the last day
     assert status.plan_complete is True
 
@@ -559,7 +581,8 @@ def test_current_plan_handler_renders_the_accepted_menu_with_actions() -> None:
     asyncio.run(current_plan(message, facade))
 
     assert len(message.answers) == 1
-    assert "day 1 of 3" in message.answers[0]
+    # Accepted today, so the plan starts tomorrow (issue #38).
+    assert "starts tomorrow" in message.answers[0]
     # Reuses the accepted-plan keyboard so shopping list / recipes / rate are reachable.
     callback_data = [
         button.callback_data
@@ -582,3 +605,73 @@ def test_accepting_a_cycle_stamps_accepted_at() -> None:
     facade.accept_latest_cycle(telegram_user_id=1)
 
     assert facade.cycles.get_latest_cycle(user_id)["accepted_at"] is not None
+
+
+def test_feedback_is_not_due_until_the_day_after_the_period_ends() -> None:
+    # Issue #37/#38: 3-day plan runs A+1..A+3; the request is due on A+4.
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+    now = datetime.now(UTC)
+
+    assert facade.get_users_due_for_feedback(now) == []
+    assert facade.get_users_due_for_feedback(now + timedelta(days=3)) == []
+
+    due = facade.get_users_due_for_feedback(now + timedelta(days=4))
+    assert [telegram_user_id for telegram_user_id, _ in due] == [1]
+
+
+def test_feedback_request_is_not_repeated_once_marked() -> None:
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+    facade.accept_latest_cycle(telegram_user_id=1)
+    later = datetime.now(UTC) + timedelta(days=5)
+
+    due = facade.get_users_due_for_feedback(later)
+    assert len(due) == 1
+    _, planning_cycle_id = due[0]
+
+    facade.mark_feedback_requested(planning_cycle_id)
+
+    assert facade.get_users_due_for_feedback(later) == []
+
+
+def test_no_feedback_request_for_an_unaccepted_plan() -> None:
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+
+    # Never accepted -> no feedback request, however long has passed.
+    assert facade.get_users_due_for_feedback(datetime.now(UTC) + timedelta(days=30)) == []
+
+
+def test_cycle_feedback_targets_resolve_a_specific_cycle_not_the_latest() -> None:
+    # Issue #37: the request is about the finished cycle even if a newer plan exists.
+    facade = _offline_facade()
+    first = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+
+    targets = facade.get_cycle_feedback_targets(1, first.planning_cycle_id)
+
+    assert targets is not None
+    cycle_id, items = targets
+    assert cycle_id == first.planning_cycle_id
+    assert items
+
+
+def test_cycle_feedback_targets_reject_another_users_cycle() -> None:
+    facade = _offline_facade()
+    other = facade.generate_plan_from_text_inventory(
+        telegram_user_id=2, days=2, include_dinner_leftovers=False
+    )
+
+    assert facade.get_cycle_feedback_targets(1, other.planning_cycle_id) is None

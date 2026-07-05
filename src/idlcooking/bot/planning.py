@@ -75,6 +75,7 @@ class TelegramCurrentPlanStatus:
     menu_lines: tuple[str, ...]
     current_day: int
     total_days: int
+    not_started: bool
     plan_complete: bool
     next_planning_at: str | None
 
@@ -314,6 +315,56 @@ class TelegramPlanningFacade:
             for item in items
         ]
 
+    def get_cycle_feedback_targets(
+        self, telegram_user_id: int, planning_cycle_id: int
+    ) -> tuple[int, list[TelegramFeedbackMenuItem]] | None:
+        """Feedback targets for a *specific* cycle rather than whatever is latest.
+
+        A scheduled feedback request (issue #37) is about the cycle whose period just
+        ended, which may no longer be the latest if a newer plan was generated since.
+        """
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        items = self.cycles.get_cycle_menu_items(planning_cycle_id, user_id)
+        if not items:
+            return None
+        return planning_cycle_id, [
+            TelegramFeedbackMenuItem(title=item["title"], source_url=item["source_url"])
+            for item in items
+        ]
+
+    def get_users_due_for_feedback(
+        self, now: datetime | None = None
+    ) -> list[tuple[int, int]]:
+        """(telegram_user_id, planning_cycle_id) pairs whose plan period has ended.
+
+        The period starts the day after acceptance (issue #38) and runs N days, so the
+        feedback request is due once at least N+1 days have passed since acceptance —
+        i.e. the day after the last planned day. Measured in each user's schedule
+        timezone. Cycles that already had a request are excluded by the query.
+        """
+        now = now or datetime.now(UTC)
+        due: list[tuple[int, int]] = []
+        for row in self.cycles.get_latest_accepted_cycles_awaiting_feedback():
+            accepted_at = row["accepted_at"]
+            if not accepted_at:
+                continue
+            cycle_id = int(row["id"])
+            total_days = self.cycles.get_menu_day_count(cycle_id)
+            if total_days <= 0:
+                continue
+            schedule = self.schedules.get_schedule(int(row["user_id"])) or PlanningSchedule()
+            zone = ZoneInfo(schedule.timezone)
+            accepted_date = (
+                datetime.fromisoformat(str(accepted_at)).replace(tzinfo=UTC).astimezone(zone).date()
+            )
+            days_since_accept = (now.astimezone(zone).date() - accepted_date).days
+            if days_since_accept >= total_days + 1:
+                due.append((int(row["telegram_user_id"]), cycle_id))
+        return due
+
+    def mark_feedback_requested(self, planning_cycle_id: int) -> None:
+        self.cycles.mark_feedback_requested(planning_cycle_id)
+
     def record_feedback(
         self,
         telegram_user_id: int,
@@ -342,8 +393,10 @@ class TelegramPlanningFacade:
         """Status of the user's active (accepted) plan for the /currentplan command.
 
         Returns None when there is no accepted plan yet, so the caller can steer the
-        user to /plan. "Current day" is counted from acceptance (issue #35), measured
-        in the schedule's timezone so day boundaries match the user's local calendar.
+        user to /plan. The planned period starts the day *after* acceptance (issue #38):
+        on the acceptance day the plan hasn't started (``not_started``), the next day is
+        "Day 1", and after the last day it's complete. Day boundaries are measured in the
+        schedule's timezone so they match the user's local calendar.
         """
         now = now or datetime.now(UTC)
         user_id = self.ensure_user_defaults(telegram_user_id)
@@ -358,17 +411,21 @@ class TelegramPlanningFacade:
         schedule = self.schedules.get_schedule(user_id) or PlanningSchedule()
         zone = ZoneInfo(schedule.timezone)
         started = cycle["accepted_at"] or cycle["generated_at"]
-        current_day = 1
+        # Days elapsed since acceptance: 0 on the acceptance day (period starts tomorrow),
+        # k on day A+k -> "Day k of N", > N once the period is over.
+        days_since_accept = 0
         if started:
             # SQLite CURRENT_TIMESTAMP is naive UTC ("YYYY-MM-DD HH:MM:SS").
             started_date = (
                 datetime.fromisoformat(str(started)).replace(tzinfo=UTC).astimezone(zone).date()
             )
             today = now.astimezone(zone).date()
-            current_day = max(1, (today - started_date).days + 1)
+            days_since_accept = (today - started_date).days
 
-        plan_complete = total_days > 0 and current_day > total_days
-        displayed_day = min(current_day, total_days) if total_days else current_day
+        not_started = days_since_accept <= 0
+        plan_complete = total_days > 0 and days_since_accept > total_days
+        displayed_day = min(days_since_accept, total_days) if total_days else days_since_accept
+        displayed_day = max(displayed_day, 1)
 
         next_run = schedule.next_run_after(now)
         next_planning_at = (
@@ -381,6 +438,7 @@ class TelegramPlanningFacade:
             menu_lines=menu_lines,
             current_day=displayed_day,
             total_days=total_days,
+            not_started=not_started,
             plan_complete=plan_complete,
             next_planning_at=next_planning_at,
         )
