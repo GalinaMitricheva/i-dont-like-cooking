@@ -68,6 +68,30 @@ def _format_shopping_list(
     return tuple(lines)
 
 
+def _format_menu_line(
+    day_index: int,
+    meal_type: str,
+    title: str,
+    active_time_minutes: int,
+    servings: int | None = None,
+    *,
+    is_leftover: bool = False,
+) -> str:
+    """Render one menu line, marking leftovers and showing portions (issues #28, #39).
+
+    A leftover dinner reads as "leftover <dish>" so it isn't mistaken for an accidental
+    repeat of the day's lunch; a freshly cooked meal shows "makes N" when the recipe's
+    portion count is known.
+    """
+    if is_leftover:
+        body = f"leftover {title} ({active_time_minutes} min)"
+    elif servings is not None:
+        body = f"{title} ({active_time_minutes} min, makes {servings})"
+    else:
+        body = f"{title} ({active_time_minutes} min)"
+    return f"Day {day_index + 1} ({meal_type}): {body}"
+
+
 @dataclass(frozen=True)
 class TelegramPlanSummary:
     planning_cycle_id: int
@@ -116,6 +140,8 @@ class TelegramRecipeDetail:
     active_time_minutes: int
     ingredients: tuple[str, ...]
     steps_summary: str
+    servings: int | None = None
+    is_leftover: bool = False
 
 
 class TelegramPlanningFacade:
@@ -291,8 +317,14 @@ class TelegramPlanningFacade:
         planning_cycle_id = self.cycles.save_generated_plan(user_id, generated)
 
         menu_lines = tuple(
-            f"Day {item.day_index + 1} ({item.meal_type.value}): {item.recipe.title} "
-            f"({item.recipe.active_time_minutes} min)"
+            _format_menu_line(
+                item.day_index,
+                item.meal_type.value,
+                item.recipe.title,
+                item.recipe.active_time_minutes,
+                item.recipe.servings,
+                is_leftover=item.is_leftover,
+            )
             for item in generated.menu
         )
         shopping_lines = _format_shopping_list(
@@ -494,6 +526,8 @@ class TelegramPlanningFacade:
                     active_time_minutes=item["active_time_minutes"],
                     ingredients=item["ingredients"],
                     steps_summary=item["steps_summary"],
+                    servings=item["servings"],
+                    is_leftover=item["is_leftover"],
                 )
                 for item in grouped.get(day, [])
             ]
@@ -508,7 +542,14 @@ class TelegramPlanningFacade:
             return None
         days = self.get_latest_recipe_details_by_day(telegram_user_id)
         menu_lines = tuple(
-            f"Day {day_index + 1} ({item.meal_type}): {item.title} ({item.active_time_minutes} min)"
+            _format_menu_line(
+                day_index,
+                item.meal_type,
+                item.title,
+                item.active_time_minutes,
+                item.servings,
+                is_leftover=item.is_leftover,
+            )
             for day_index, items in enumerate(days)
             for item in items
         )

@@ -45,6 +45,10 @@ _PLAN_BACK_TO_DAYS_CALLBACK = "plan:back_to_days"
 _FEEDBACK_BACK_CALLBACK = "feedback:back"
 _FEEDBACK_START_PREFIX = "feedback:start:"
 
+# Telegram-length safety cap on the inline shopping list; the full list is always
+# available via /currentplan.
+_MAX_SHOPPING_LINES = 30
+
 # Command names shared between /help and the Telegram native command menu
 # (Bot.set_my_commands in bot/main.py), so the two can never drift apart.
 _COMMAND_NAMES: tuple[str, ...] = (
@@ -245,6 +249,12 @@ def _body_metrics_sex_keyboard(language: str) -> InlineKeyboardMarkup:
 
 
 def _feedback_keyboard(language: str, *, show_back: bool) -> InlineKeyboardMarkup:
+    """Rating prompt keyboard.
+
+    Every prompt — including the very first (issue #33) — carries a "Back to menu" exit
+    so the user is never trapped in the rating flow. The "Previous meal" step-back is a
+    separate affordance shown only once past the first meal (`show_back`).
+    """
     rows = [
         [
             InlineKeyboardButton(
@@ -273,14 +283,21 @@ def _feedback_keyboard(language: str, *, show_back: bool) -> InlineKeyboardMarku
             ),
         ],
     ]
+    nav_row = []
     if show_back:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text=t(language, "back_button"), callback_data=_FEEDBACK_BACK_CALLBACK
-                )
-            ]
+        nav_row.append(
+            InlineKeyboardButton(
+                text=t(language, "feedback_previous_meal_button"),
+                callback_data=_FEEDBACK_BACK_CALLBACK,
+            )
         )
+    nav_row.append(
+        InlineKeyboardButton(
+            text=t(language, "feedback_back_to_menu_button"),
+            callback_data=_PLAN_BACK_TO_MENU_CALLBACK,
+        )
+    )
+    rows.append(nav_row)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -663,15 +680,23 @@ async def onboarding_body_metrics_sex(
     await callback.answer()
 
 
+def _plan_body_text(language: str, menu: str, *, accepted: bool) -> str:
+    """Plan message body, matching the keyboard's draft/accepted state (issue #32).
+
+    An accepted plan must not keep reading as a "draft", so the wording is chosen from
+    the same acceptance flag the keyboard uses rather than being hardcoded.
+    """
+    return t(language, "plan_accepted" if accepted else "plan", menu=menu)
+
+
 async def _send_plan(
     message: Message,
     summary_menu_lines: tuple[str, ...],
     language: str,
 ) -> None:
-    menu = "\n".join(summary_menu_lines)
+    # A freshly generated or regenerated plan is always an unaccepted draft.
     await message.answer(
-        t(language, "plan", menu=menu),
-        # A freshly generated or regenerated plan is always an unaccepted draft.
+        _plan_body_text(language, "\n".join(summary_menu_lines), accepted=False),
         reply_markup=plan_keyboard(language, accepted=False),
     )
 
@@ -758,11 +783,19 @@ async def plan_accept_callback(
         return
     language = resolve_language(callback.from_user.language_code)
     if planning_facade.accept_latest_cycle(callback.from_user.id):
-        # Reflect acceptance in the keyboard itself (issue #27): otherwise the user
-        # has no visible sign that tapping Accept did anything.
-        await callback.message.edit_reply_markup(
-            reply_markup=plan_keyboard(language, accepted=True)
-        )
+        # Reflect acceptance in the message text *and* the keyboard (issues #27, #32):
+        # rewrite the body so an accepted plan no longer reads as a "draft", not just
+        # swap the buttons. Fall back to a keyboard-only edit if the menu can't be
+        # rebuilt for some reason.
+        summary = planning_facade.get_latest_plan_summary(callback.from_user.id)
+        accepted_keyboard = plan_keyboard(language, accepted=True)
+        if summary is not None:
+            await callback.message.edit_text(
+                _plan_body_text(language, "\n".join(summary.menu_lines), accepted=True),
+                reply_markup=accepted_keyboard,
+            )
+        else:
+            await callback.message.edit_reply_markup(reply_markup=accepted_keyboard)
     await callback.answer(t(language, "plan_accepted_toast"))
 
 
@@ -786,6 +819,29 @@ async def plan_regenerate_callback(
     await callback.answer()
 
 
+def _truncate_shopping_lines(
+    language: str, lines: tuple[str, ...], max_lines: int
+) -> tuple[str, ...]:
+    """Trim the formatted shopping list to at most `max_lines` without orphaning a header.
+
+    A flat ``lines[:max_lines]`` slice can cut right after a category header (or between a
+    header and its only item), leaving a dangling "Protein:" with nothing beneath it and
+    silently dropping needed items (issue #31). Instead we cut at an item boundary, drop
+    any now-trailing header/blank lines, and note how many items were left off.
+    """
+    total_items = sum(1 for line in lines if line.startswith("- "))
+    if len(lines) <= max_lines:
+        return lines
+    # Reserve one line for the "…and N more" note.
+    kept = list(lines[: max_lines - 1])
+    while kept and (kept[-1].endswith(":") or not kept[-1].strip()):
+        kept.pop()
+    remaining = total_items - sum(1 for line in kept if line.startswith("- "))
+    if remaining > 0:
+        kept.append(t(language, "plan_shopping_list_more", count=remaining))
+    return tuple(kept)
+
+
 @router.callback_query(F.data == _PLAN_SHOPPING_LIST_CALLBACK)
 async def plan_shopping_list_callback(
     callback: CallbackQuery, planning_facade: TelegramPlanningFacade
@@ -798,7 +854,7 @@ async def plan_shopping_list_callback(
     if not lines:
         await callback.answer(t(language, "plan_no_shopping_list"), show_alert=True)
         return
-    shopping = "\n".join(lines[:30])
+    shopping = "\n".join(_truncate_shopping_lines(language, lines, _MAX_SHOPPING_LINES))
     await callback.message.answer(
         t(language, "plan_shopping_list", shopping=shopping),
         reply_markup=_back_only_keyboard(language),
@@ -812,9 +868,13 @@ def _format_day_recipes(
     lines = [t(language, "recipe_view_day_header", day=day_index + 1)]
     for item in items:
         lines.append("")
-        lines.append(
-            f"{item.meal_type.capitalize()}: {item.title} ({item.active_time_minutes} min)"
-        )
+        if item.is_leftover:
+            detail = f"leftover {item.title} ({item.active_time_minutes} min)"
+        elif item.servings is not None:
+            detail = f"{item.title} ({item.active_time_minutes} min, makes {item.servings})"
+        else:
+            detail = f"{item.title} ({item.active_time_minutes} min)"
+        lines.append(f"{item.meal_type.capitalize()}: {detail}")
         if item.ingredients:
             lines.append("Ingredients: " + ", ".join(item.ingredients))
         if item.steps_summary:
@@ -880,20 +940,27 @@ async def recipe_view_callback(
 
 @router.callback_query(F.data == _PLAN_BACK_TO_MENU_CALLBACK)
 async def plan_back_to_menu_callback(
-    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
+    callback: CallbackQuery, planning_facade: TelegramPlanningFacade, state: FSMContext
 ) -> None:
     if callback.from_user is None or not isinstance(callback.message, Message):
         await callback.answer()
         return
     language = resolve_language(callback.from_user.language_code)
+    # If the user tapped "Back to menu" mid-rating (issue #33), leave the feedback FSM
+    # so they aren't stuck in it. Only the state marker is cleared — any other state
+    # data (e.g. the plan settings that Regenerate reuses) is left intact.
+    if await state.get_state() == FeedbackStates.reviewing.state:
+        await state.set_state(None)
     summary = planning_facade.get_latest_plan_summary(callback.from_user.id)
     if summary is None:
         await callback.answer(t(language, "plan_no_recipes"), show_alert=True)
         return
     menu = "\n".join(summary.menu_lines)
     accepted = planning_facade.is_latest_cycle_accepted(callback.from_user.id)
+    # Match the wording to acceptance state (issue #32) the same way the keyboard does,
+    # so navigating back to an accepted menu doesn't relabel it a "draft".
     await callback.message.edit_text(
-        t(language, "plan", menu=menu),
+        _plan_body_text(language, menu, accepted=accepted),
         reply_markup=plan_keyboard(language, accepted=accepted),
     )
     await callback.answer()

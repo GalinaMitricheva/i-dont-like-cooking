@@ -175,6 +175,21 @@ MIGRATIONS: tuple[Migration, ...] = (
         sql="ALTER TABLE planning_cycles ADD COLUMN feedback_requested_at TEXT;",
         is_applied=lambda c: _column_exists(c, "planning_cycles", "feedback_requested_at"),
     ),
+    Migration(
+        description="add recipes.servings",
+        sql="ALTER TABLE recipes ADD COLUMN servings INTEGER;",
+        is_applied=lambda c: _column_exists(c, "recipes", "servings"),
+    ),
+    Migration(
+        description="add menu_items.servings",
+        sql="ALTER TABLE menu_items ADD COLUMN servings INTEGER;",
+        is_applied=lambda c: _column_exists(c, "menu_items", "servings"),
+    ),
+    Migration(
+        description="add menu_items.is_leftover",
+        sql="ALTER TABLE menu_items ADD COLUMN is_leftover INTEGER NOT NULL DEFAULT 0;",
+        is_applied=lambda c: _column_exists(c, "menu_items", "is_leftover"),
+    ),
 )
 
 

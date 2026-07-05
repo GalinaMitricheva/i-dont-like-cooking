@@ -3,14 +3,18 @@ from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 
 from idlcooking.bot.handlers import (
+    _FEEDBACK_BACK_CALLBACK,
     _PLAN_ACCEPT_CALLBACK,
     _PLAN_BACK_TO_MENU_CALLBACK,
     _PLAN_RATE_CALLBACK,
     _PLAN_REGENERATE_CALLBACK,
     _back_only_keyboard,
+    _feedback_keyboard,
     _parse_list_answer,
+    _plan_body_text,
     _resolve_message_language,
     _terminal_text,
+    _truncate_shopping_lines,
     bot_commands,
     current_plan,
     plan_keyboard,
@@ -100,6 +104,48 @@ def test_back_only_keyboard_points_to_the_plan_menu() -> None:
     assert keyboard.inline_keyboard[0][0].callback_data == _PLAN_BACK_TO_MENU_CALLBACK
 
 
+def test_feedback_first_prompt_offers_a_back_to_menu_exit() -> None:
+    # Issue #33: the very first rating prompt must not trap the user with no way out.
+    first = _feedback_keyboard("en", show_back=False)
+    callbacks = [button.callback_data for row in first.inline_keyboard for button in row]
+
+    assert _PLAN_BACK_TO_MENU_CALLBACK in callbacks  # exit to the plan menu
+    assert _FEEDBACK_BACK_CALLBACK not in callbacks  # no "previous meal" step on meal 1
+
+
+def test_feedback_later_prompt_offers_both_previous_meal_and_back_to_menu() -> None:
+    later = _feedback_keyboard("en", show_back=True)
+    callbacks = [button.callback_data for row in later.inline_keyboard for button in row]
+
+    assert _PLAN_BACK_TO_MENU_CALLBACK in callbacks
+    assert _FEEDBACK_BACK_CALLBACK in callbacks
+
+
+def test_plan_body_wording_switches_from_draft_to_accepted() -> None:
+    # Issue #32: once accepted, the body must stop calling the menu a "draft".
+    draft = _plan_body_text("en", "Day 1 (lunch): Soup", accepted=False)
+    accepted = _plan_body_text("en", "Day 1 (lunch): Soup", accepted=True)
+
+    assert "draft" in draft.lower()
+    assert "draft" not in accepted.lower()
+    assert "Day 1 (lunch): Soup" in accepted
+
+
+def test_truncate_shopping_lines_never_orphans_a_trailing_header() -> None:
+    # Issue #31: a flat line cut can leave a dangling "Protein:" header with no items.
+    lines = ("Produce:", "- 1 onion", "- 2 tomato", "", "Protein:", "- 1 chicken")
+    truncated = _truncate_shopping_lines("en", lines, 5)
+
+    assert not truncated[-1].endswith(":")  # never ends on an orphaned header
+    assert truncated[-1].strip()  # nor a blank separator
+    assert "more items" in truncated[-1]  # tells the user something was trimmed
+
+
+def test_truncate_shopping_lines_returns_everything_when_within_the_cap() -> None:
+    lines = ("Produce:", "- 1 onion", "- 2 tomato")
+    assert _truncate_shopping_lines("en", lines, 30) == lines
+
+
 def test_help_message_includes_every_command() -> None:
     commands_text = "\n".join(
         f"/{command} — {description}" for command, description in bot_commands("en")
@@ -131,6 +177,36 @@ def test_telegram_planning_facade_generates_and_persists_plan() -> None:
     assert any("(dinner)" in line for line in summary.menu_lines)
     assert any("(lunch)" in line for line in summary.menu_lines)
     assert any("already have" in line for line in summary.shopping_lines)
+
+
+def test_menu_line_marks_leftover_dinner_and_shows_servings() -> None:
+    # Issues #39 & #28: lunches surface a portion count and leftover dinners are marked
+    # as leftovers rather than reading as an accidental repeat.
+    facade = _offline_facade()
+
+    summary = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=1, include_dinner_leftovers=True
+    )
+
+    lunch_line = next(line for line in summary.menu_lines if "(lunch)" in line)
+    dinner_line = next(line for line in summary.menu_lines if "(dinner)" in line)
+    assert "makes" in lunch_line
+    assert "leftover" in dinner_line
+
+
+def test_rebuilt_menu_line_preserves_leftover_marking_and_servings() -> None:
+    # The persisted-and-rebuilt path (accepted menu, back-to-menu, /currentplan) must
+    # keep the same leftover marking and portion count as the freshly generated menu.
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=1, include_dinner_leftovers=True
+    )
+
+    rebuilt = facade.get_latest_plan_summary(telegram_user_id=1)
+
+    assert rebuilt is not None
+    assert any("leftover" in line for line in rebuilt.menu_lines)
+    assert any("makes" in line for line in rebuilt.menu_lines)
 
 
 def test_telegram_planning_facade_can_disable_dinner_leftovers() -> None:

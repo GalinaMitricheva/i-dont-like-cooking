@@ -12,6 +12,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=12,
         tags=("simple", "rice", "vegetarian"),
         protein_grams=28,
+        servings=2,
     ),
     RecipeCandidate(
         title="Chicken couscous tray",
@@ -20,6 +21,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=18,
         tags=("simple", "batch", "high-protein"),
         protein_grams=35,
+        servings=4,
     ),
     RecipeCandidate(
         title="Tuna bean salad",
@@ -28,6 +30,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=10,
         tags=("no-cook", "simple", "high-protein"),
         protein_grams=32,
+        servings=2,
     ),
     RecipeCandidate(
         title="Lentil tomato soup",
@@ -36,6 +39,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=15,
         tags=("simple", "batch", "vegan"),
         protein_grams=24,
+        servings=4,
     ),
     RecipeCandidate(
         title="Greek yogurt breakfast",
@@ -44,6 +48,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=5,
         tags=("breakfast", "no-cook", "simple"),
         protein_grams=25,
+        servings=2,
     ),
     RecipeCandidate(
         title="Scrambled eggs on toast",
@@ -52,6 +57,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=8,
         tags=("breakfast", "simple", "vegetarian"),
         protein_grams=18,
+        servings=2,
     ),
     RecipeCandidate(
         title="Pasta with tomato and cottage cheese",
@@ -60,6 +66,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=17,
         tags=("simple", "vegetarian"),
         protein_grams=30,
+        servings=3,
     ),
     RecipeCandidate(
         title="Microwave potato with tuna",
@@ -68,6 +75,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=14,
         tags=("simple", "microwave", "high-protein"),
         protein_grams=33,
+        servings=2,
     ),
     RecipeCandidate(
         title="Vegetable stir fry",
@@ -76,6 +84,7 @@ SEED_RECIPES: tuple[RecipeCandidate, ...] = (
         active_time_minutes=16,
         tags=("simple", "vegan", "stir-fry"),
         protein_grams=20,
+        servings=3,
     ),
 )
 

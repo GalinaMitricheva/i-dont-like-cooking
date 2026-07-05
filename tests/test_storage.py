@@ -53,6 +53,35 @@ def test_user_profile_and_schedule_round_trip() -> None:
     assert schedules.get_schedule(user_id) == schedule
 
 
+def test_recipe_repository_round_trips_servings() -> None:
+    # Issue #39: the portion count must survive discovery caching through the repository.
+    connection = connect("sqlite:///:memory:")
+    initialize_database(connection)
+    recipes = RecipeRepository(connection)
+    recipes.upsert_recipe(
+        RecipeCandidate(
+            title="Tray",
+            source_url="https://example.com/tray",
+            ingredients=("chicken",),
+            active_time_minutes=18,
+            servings=4,
+        )
+    )
+    recipes.upsert_recipe(
+        RecipeCandidate(
+            title="Solo",
+            source_url="https://example.com/solo",
+            ingredients=("egg",),
+            active_time_minutes=8,
+        )
+    )
+
+    stored = {recipe.source_url: recipe for recipe in recipes.get_all_recipes()}
+
+    assert stored["https://example.com/tray"].servings == 4
+    assert stored["https://example.com/solo"].servings is None
+
+
 def test_planning_cycle_repository_saves_generated_plan_summary() -> None:
     connection = connect("sqlite:///:memory:")
     initialize_database(connection)

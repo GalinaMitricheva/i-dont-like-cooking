@@ -11,7 +11,11 @@ MESSAGES: dict[str, dict[str, str]] = {
             "/plan rice, eggs, cucumber"
         ),
         "plan": "Here's your draft menu:\n\n{menu}",
+        "plan_accepted": "Here's your menu:\n\n{menu}",
         "plan_shopping_list": "Shopping list:\n{shopping}",
+        "plan_shopping_list_more": (
+            "…and {count} more items — see the full list under /currentplan."
+        ),
         "plan_no_shopping_list": "No shopping list yet — try /plan first.",
         "plan_accept_button": "✅ Accept menu",
         "plan_regenerate_button": "\U0001F504 Regenerate",
@@ -164,6 +168,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "feedback_too_much_effort_button": "\U0001F62B Too much effort",
         "feedback_too_expensive_button": "\U0001F4B8 Too expensive",
         "feedback_skipped_button": "\U0001F6AB Didn't cook it",
+        "feedback_previous_meal_button": "◀ Previous meal",
+        "feedback_back_to_menu_button": "\U0001F519 Back to menu",
         "feedback_complete": "Thanks for the feedback! I'll use it to improve your next plan.",
         "help_hint": "Send /help to see everything I can do.",
         "help": "Here's what I can do:\n\n{commands}",

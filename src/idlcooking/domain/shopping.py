@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from fractions import Fraction
 
 from idlcooking.domain.planning import InventoryItem, MenuItem
 
@@ -75,6 +76,15 @@ def _parse_ingredient_line(text: str) -> tuple[str, str]:
     return stripped, ""
 
 
+# Substitution / serving notes introduced by a trailing comma + keyword ("..., sub water",
+# "..., or use X", "..., to taste"). These describe *how* to use an ingredient, not a
+# separate thing to buy, so they're trimmed off the display name (issue #29).
+_TRAILING_ASIDE_PATTERN = re.compile(
+    r"\s*,\s*(?:sub|substitute|or|to serve|for serving|to taste|optional|plus more)\b.*$",
+    re.IGNORECASE,
+)
+
+
 def _strip_parenthetical_asides(text: str) -> str:
     """Remove parenthetical asides such as "(minced)" or "(or more onion)".
 
@@ -83,7 +93,12 @@ def _strip_parenthetical_asides(text: str) -> str:
     shopping list lines for what is really the same ingredient.
     """
     without_parens = re.sub(r"\([^)]*\)", "", text)
-    return re.sub(r"\s+", " ", without_parens).strip(" ,")
+    # Scraped lines sometimes carry an *unbalanced* paren — an orphan ")" left after a
+    # balanced pair was stripped (e.g. "wine (red), sub water)"), or a stray "(" — which
+    # the balanced-pair regex above never touches. Drop any that survive (issue #29).
+    without_parens = without_parens.replace("(", "").replace(")", "")
+    without_aside = _TRAILING_ASIDE_PATTERN.sub("", without_parens)
+    return re.sub(r"\s+", " ", without_aside).strip(" ,")
 
 
 def _singularize(word: str) -> str:
@@ -148,8 +163,28 @@ def _parse_amount(text: str) -> float | None:
         return None
 
 
+# Cooking fractions rarely need a finer denominator than eighths (1/2, 1/3, 2/3, 1/4,
+# 3/4, 1/8, ... and their sums), so cap the reconstructed fraction there.
+_MAX_FRACTION_DENOMINATOR = 8
+
+
 def _format_amount(value: float) -> str:
-    return str(int(value)) if value == int(value) else f"{value:g}"
+    """Format a combined amount for display.
+
+    Whole numbers print bare. A value that is a clean small-denominator fraction (or a
+    sum of them, e.g. 1/3 + 1/3 -> "2/3") prints as a fraction — "2/3", "1 1/2" — rather
+    than the long decimal ``f"{value:g}"`` used to emit (e.g. "0.666667"; issue #30).
+    Anything that isn't a clean fraction falls back to at most two decimal places.
+    """
+    rounded = round(value)
+    if abs(value - rounded) < 1e-9:
+        return str(rounded)
+    fraction = Fraction(value).limit_denominator(_MAX_FRACTION_DENOMINATOR)
+    if fraction.denominator != 1 and abs(float(fraction) - value) < 1e-6:
+        whole, remainder = divmod(fraction.numerator, fraction.denominator)
+        fraction_text = f"{remainder}/{fraction.denominator}"
+        return f"{whole} {fraction_text}" if whole else fraction_text
+    return f"{round(value, 2):g}"
 
 
 def _normalize_unit(unit: str) -> str:
@@ -158,7 +193,9 @@ def _normalize_unit(unit: str) -> str:
 
 
 def _pluralize_unit(unit: str, amount: float) -> str:
-    if not unit or amount == 1:
+    # Amounts of one or less stay singular ("1 cup", "2/3 cup"); only genuine plurals
+    # (> 1) get an "s".
+    if not unit or amount <= 1:
         return unit
     return unit if unit.endswith("s") else f"{unit}s"
 

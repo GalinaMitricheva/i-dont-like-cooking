@@ -85,12 +85,26 @@ class ScrapedRecipe(Protocol):
     def total_time(self) -> int | None: ...
     def instructions(self) -> str: ...
     def category(self) -> str | None: ...
+    def yields(self) -> str | None: ...
 
 
 def _sanitize(text: str, max_length: int = _MAX_FIELD_LENGTH) -> str:
     text = _HTML_TAG_RE.sub("", text or "")
     text = " ".join(text.split())
     return text[:max_length]
+
+
+def _parse_servings(text: str | None) -> int | None:
+    """Parse an integer portion count from a recipe's free-text yield (issue #39).
+
+    Yields arrive as messy strings: "4 servings", "Serves 4-6", "Makes 12". Takes the
+    first integer found — the low end of a range, conservatively — and returns None when
+    the yield is absent or has no number.
+    """
+    if not text:
+        return None
+    match = re.search(r"\d+", text)
+    return int(match.group()) if match else None
 
 
 def _summarize_instructions(instructions: str) -> str:
@@ -155,6 +169,11 @@ class RecipeDiscoveryService:
         except Exception:
             steps_summary = ""
 
+        try:
+            servings = _parse_servings(scraper.yields())
+        except Exception:
+            servings = None
+
         return RecipeCandidate(
             title=_sanitize(title, max_length=200),
             source_url=url,
@@ -162,4 +181,5 @@ class RecipeDiscoveryService:
             active_time_minutes=active_time_minutes,
             tags=tuple(_sanitize(tag) for tag in category.split(",") if tag.strip()),
             steps_summary=steps_summary,
+            servings=servings,
         )

@@ -292,9 +292,11 @@ class PlanningCycleRepository:
                 score,
                 reason,
                 ingredients_json,
-                steps_summary
+                steps_summary,
+                servings,
+                is_leftover
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -308,6 +310,8 @@ class PlanningCycleRepository:
                     item.reason,
                     _json_tuple(item.recipe.ingredients),
                     item.recipe.steps_summary,
+                    item.recipe.servings,
+                    int(item.is_leftover),
                 )
                 for item in plan.menu
             ],
@@ -499,7 +503,9 @@ class PlanningCycleRepository:
                 source_url,
                 active_time_minutes,
                 ingredients_json,
-                steps_summary
+                steps_summary,
+                servings,
+                is_leftover
             FROM menu_items
             WHERE planning_cycle_id = ?
             ORDER BY id ASC
@@ -516,6 +522,8 @@ class PlanningCycleRepository:
                     "active_time_minutes": row["active_time_minutes"],
                     "ingredients": _tuple_from_json(row["ingredients_json"]),
                     "steps_summary": row["steps_summary"],
+                    "servings": row["servings"],
+                    "is_leftover": bool(row["is_leftover"]),
                 }
             )
         return grouped
@@ -578,9 +586,10 @@ class RecipeRepository:
                 tags_json,
                 protein_grams,
                 steps_summary,
+                servings,
                 fetched_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(source_url) DO UPDATE SET
                 title = excluded.title,
                 ingredients_json = excluded.ingredients_json,
@@ -588,6 +597,7 @@ class RecipeRepository:
                 tags_json = excluded.tags_json,
                 protein_grams = excluded.protein_grams,
                 steps_summary = excluded.steps_summary,
+                servings = excluded.servings,
                 fetched_at = CURRENT_TIMESTAMP
             """,
             (
@@ -598,6 +608,7 @@ class RecipeRepository:
                 _json_tuple(recipe.tags),
                 recipe.protein_grams,
                 recipe.steps_summary,
+                recipe.servings,
             ),
         )
         self.connection.commit()
@@ -615,6 +626,7 @@ class RecipeRepository:
                 tags=_tuple_from_json(row["tags_json"]),
                 protein_grams=row["protein_grams"],
                 steps_summary=row["steps_summary"],
+                servings=row["servings"],
             )
             for row in rows
         ]

@@ -99,6 +99,92 @@ def test_dinner_leftovers_reuse_the_same_days_lunch() -> None:
     assert menu[3].recipe == menu[2].recipe
 
 
+def test_leftover_dinner_prefers_a_multi_portion_lunch() -> None:
+    # Issue #39: a batch-cookable main is preferred to anchor a day that carries a
+    # leftover dinner, and that dinner is marked as a leftover.
+    profile = UserProfile()  # household_size defaults to 1
+    multi = RecipeCandidate(
+        title="Big tray",
+        source_url="https://example.com/big",
+        ingredients=("chicken",),
+        active_time_minutes=15,
+        servings=4,
+    )
+    single = RecipeCandidate(
+        title="Solo bowl",
+        source_url="https://example.com/solo",
+        ingredients=("egg",),
+        active_time_minutes=15,
+        servings=1,
+    )
+
+    menu = select_weekly_menu(
+        [single, multi], profile, days=1, include_dinner_leftovers=True
+    )
+
+    lunch = next(item for item in menu if item.meal_type == MealType.LUNCH)
+    dinner = next(item for item in menu if item.meal_type == MealType.DINNER)
+    assert lunch.recipe.title == "Big tray"
+    assert dinner.is_leftover is True
+    assert dinner.recipe == lunch.recipe
+
+
+def test_single_portion_lunch_gets_a_separate_dinner_not_a_fake_leftover() -> None:
+    # Issue #39/#28: a one-portion lunch can't produce leftovers, so plan a real,
+    # distinct dinner instead of repeating the lunch and calling it a leftover.
+    profile = UserProfile()
+    recipe_a = RecipeCandidate(
+        title="One A",
+        source_url="https://example.com/a",
+        ingredients=("a",),
+        active_time_minutes=10,
+        servings=1,
+    )
+    recipe_b = RecipeCandidate(
+        title="One B",
+        source_url="https://example.com/b",
+        ingredients=("b",),
+        active_time_minutes=10,
+        servings=1,
+    )
+
+    menu = select_weekly_menu(
+        [recipe_a, recipe_b], profile, days=1, include_dinner_leftovers=True
+    )
+
+    lunch = next(item for item in menu if item.meal_type == MealType.LUNCH)
+    dinner = next(item for item in menu if item.meal_type == MealType.DINNER)
+    assert dinner.is_leftover is False
+    assert dinner.recipe != lunch.recipe
+
+
+def test_leftover_threshold_scales_with_household_size() -> None:
+    # A leftover needs enough for a *second* household sitting: serves-2 is exactly one
+    # sitting for a two-person home, so it must not be routed into leftovers.
+    profile = UserProfile(household_size=2)
+    serves_two = RecipeCandidate(
+        title="Serves two",
+        source_url="https://example.com/two",
+        ingredients=("x",),
+        active_time_minutes=10,
+        servings=2,
+    )
+    other = RecipeCandidate(
+        title="Other",
+        source_url="https://example.com/other",
+        ingredients=("y",),
+        active_time_minutes=10,
+        servings=2,
+    )
+
+    menu = select_weekly_menu(
+        [serves_two, other], profile, days=1, include_dinner_leftovers=True
+    )
+
+    dinner = next(item for item in menu if item.meal_type == MealType.DINNER)
+    assert dinner.is_leftover is False
+
+
 def test_lunch_leftovers_do_not_duplicate_shopping_list_items() -> None:
     profile = UserProfile()
     recipes = [
@@ -264,6 +350,15 @@ def test_combine_quantities_handles_fractions() -> None:
     assert _combine_quantities(["1/2 cup", "1/2 cup"]) == "1 cup"
 
 
+def test_combine_quantities_renders_fraction_sums_not_ugly_decimals() -> None:
+    # Issue #30: 1/3 + 1/3 must read as "2/3 cup", not "0.666667 cups".
+    assert _combine_quantities(["1/3 cup", "1/3 cup"]) == "2/3 cup"
+    # A sum over one renders as a mixed number and pluralizes the unit.
+    assert _combine_quantities(["3/4 cup", "3/4 cup"]) == "1 1/2 cups"
+    # A sum that isn't a clean small fraction rounds cleanly instead of a long decimal.
+    assert _combine_quantities(["0.1 cup", "0.2 cup"]) == "0.3 cup"
+
+
 def test_combine_quantities_ignores_missing_amounts() -> None:
     assert _combine_quantities(["2", ""]) == "2"
     assert _combine_quantities(["", ""]) == ""
@@ -304,6 +399,13 @@ def test_strip_parenthetical_asides_removes_trailing_and_embedded_notes() -> Non
         "garlic powder"
     )
     assert _strip_parenthetical_asides("carrot") == "carrot"
+
+
+def test_strip_parenthetical_asides_removes_unbalanced_parens_and_substitutions() -> None:
+    # Issue #29: an orphan ")" and a "..., sub water" note must not reach the display name.
+    assert _strip_parenthetical_asides("flour )") == "flour"
+    assert _strip_parenthetical_asides("dry white wine , sub water )") == "dry white wine"
+    assert _strip_parenthetical_asides("dry white wine (red), sub water)") == "dry white wine"
 
 
 def test_matching_key_merges_singular_plural_and_parenthetical_variants() -> None:
@@ -506,6 +608,92 @@ def test_lunch_selection_keeps_recipes_with_both_non_meal_and_meal_tags() -> Non
     menu = select_weekly_menu([meatballs, side_dish], profile, days=1)
 
     assert menu[0].recipe.title == "Turkey meatballs"
+
+
+def test_salad_is_not_chosen_as_primary_lunch_when_a_real_main_exists() -> None:
+    # Issue #40: a salad works as a side or light dinner, not as a full lunch on its own.
+    profile = UserProfile()
+    salad = RecipeCandidate(
+        title="Greek Salad",
+        source_url="https://example.com/greek-salad",
+        ingredients=("cucumber", "feta"),
+        active_time_minutes=8,
+        tags=("Salad",),
+    )
+    main = RecipeCandidate(
+        title="Chicken bowl",
+        source_url="https://example.com/chicken-bowl",
+        ingredients=("chicken",),
+        active_time_minutes=15,
+        tags=("Dinner",),
+    )
+
+    menu = select_weekly_menu([salad, main], profile, days=1)
+
+    assert menu[0].recipe.title == "Chicken bowl"
+
+
+def test_title_only_salad_is_excluded_from_the_primary_pool() -> None:
+    # The salad cue is often only in the title, not the tags (scraped/seed data).
+    profile = UserProfile()
+    salad = RecipeCandidate(
+        title="Summer Salad",
+        source_url="https://example.com/summer-salad",
+        ingredients=("greens",),
+        active_time_minutes=5,
+        tags=("simple",),
+    )
+    meatloaf = RecipeCandidate(
+        title="Meatloaf",
+        source_url="https://example.com/meatloaf",
+        ingredients=("beef",),
+        active_time_minutes=15,
+        tags=("Dinner",),
+    )
+
+    menu = select_weekly_menu([salad, meatloaf], profile, days=1)
+
+    assert menu[0].recipe.title == "Meatloaf"
+
+
+def test_salad_only_pool_still_plans_the_salad_rather_than_an_empty_day() -> None:
+    # Progressive fallback: a salad still beats leaving the day with nothing (issue #40).
+    profile = UserProfile()
+    salad = RecipeCandidate(
+        title="Greek Salad",
+        source_url="https://example.com/greek-salad",
+        ingredients=("cucumber",),
+        active_time_minutes=8,
+        tags=("Salad",),
+    )
+
+    menu = select_weekly_menu([salad], profile, days=1)
+
+    assert menu[0].recipe.title == "Greek Salad"
+
+
+def test_main_course_salad_stays_eligible_over_a_plain_salad() -> None:
+    # A salad explicitly tagged a main course (e.g. chicken Caesar) is a real meal and
+    # must not be excluded alongside plain side salads (conservative rule, issue #40).
+    profile = UserProfile()
+    plain = RecipeCandidate(
+        title="Garden Salad",
+        source_url="https://example.com/garden-salad",
+        ingredients=("greens",),
+        active_time_minutes=5,
+        tags=("Salad",),
+    )
+    caesar = RecipeCandidate(
+        title="Chicken Caesar Salad",
+        source_url="https://example.com/caesar",
+        ingredients=("chicken", "romaine"),
+        active_time_minutes=15,
+        tags=("Salad", "Main Course"),
+    )
+
+    menu = select_weekly_menu([plain, caesar], profile, days=1)
+
+    assert menu[0].recipe.title == "Chicken Caesar Salad"
 
 
 def test_lunch_selection_cycles_through_a_thin_pool_instead_of_leaving_days_unplanned() -> None:
