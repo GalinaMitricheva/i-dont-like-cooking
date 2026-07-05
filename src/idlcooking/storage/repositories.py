@@ -453,13 +453,6 @@ class PlanningCycleRepository:
             for row in rows
         ]
 
-    def mark_all_items_bought(self, planning_cycle_id: int) -> None:
-        self.connection.execute(
-            "UPDATE shopping_list_items SET checked = 1 WHERE planning_cycle_id = ?",
-            (planning_cycle_id,),
-        )
-        self.connection.commit()
-
 
 class RecipeRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:

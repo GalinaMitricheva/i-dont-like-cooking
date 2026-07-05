@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
             profile,
             inventory,
             days=payload.days,
-            include_lunch_leftovers=payload.include_lunch_leftovers,
+            include_dinner_leftovers=payload.include_dinner_leftovers,
         )
         planning_cycle_id = cycles.save_generated_plan(user_id, generated)
         return GeneratedPlanResponse(

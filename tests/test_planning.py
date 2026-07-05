@@ -68,7 +68,7 @@ def test_shopping_list_marks_inventory_as_already_available() -> None:
     ]
 
 
-def test_lunch_leftovers_reuse_previous_days_dinner() -> None:
+def test_dinner_leftovers_reuse_the_same_days_lunch() -> None:
     profile = UserProfile()
     recipes = [
         RecipeCandidate(
@@ -85,15 +85,18 @@ def test_lunch_leftovers_reuse_previous_days_dinner() -> None:
         ),
     ]
 
-    menu = select_weekly_menu(recipes, profile, days=2, include_lunch_leftovers=True)
+    menu = select_weekly_menu(recipes, profile, days=2, include_dinner_leftovers=True)
 
     assert [(item.day_index, item.meal_type) for item in menu] == [
+        (0, MealType.LUNCH),
         (0, MealType.DINNER),
         (1, MealType.LUNCH),
         (1, MealType.DINNER),
     ]
-    # The day-1 lunch reuses the day-0 dinner recipe instead of a fresh selection.
+    # Each day's dinner reuses that same day's lunch recipe instead of a fresh
+    # selection, and every day gets a lunch (issue #22: no day is ever skipped).
     assert menu[1].recipe == menu[0].recipe
+    assert menu[3].recipe == menu[2].recipe
 
 
 def test_lunch_leftovers_do_not_duplicate_shopping_list_items() -> None:
@@ -107,7 +110,7 @@ def test_lunch_leftovers_do_not_duplicate_shopping_list_items() -> None:
         ),
     ]
 
-    menu = select_weekly_menu(recipes, profile, days=2, include_lunch_leftovers=True)
+    menu = select_weekly_menu(recipes, profile, days=2, include_dinner_leftovers=True)
     shopping_list = build_shopping_list(menu)
 
     assert [item.name for item in shopping_list] == ["eggs", "rice"]
@@ -375,9 +378,9 @@ def test_breakfast_prefers_recipes_tagged_breakfast() -> None:
     breakfasts = [item for item in menu if item.meal_type == MealType.BREAKFAST]
     assert len(breakfasts) == 1
     assert breakfasts[0].recipe.title == "Oats and banana"
-    # Dinner selection is unaffected by breakfast filtering.
-    dinners = [item for item in menu if item.meal_type == MealType.DINNER]
-    assert dinners[0].recipe.title == "Chicken couscous tray"
+    # Lunch selection is unaffected by breakfast filtering.
+    lunches = [item for item in menu if item.meal_type == MealType.LUNCH]
+    assert lunches[0].recipe.title == "Chicken couscous tray"
 
 
 def test_breakfast_cycles_through_a_smaller_candidate_pool() -> None:
@@ -443,7 +446,7 @@ def test_breakfast_is_excluded_by_default() -> None:
     assert all(item.meal_type != MealType.BREAKFAST for item in menu)
 
 
-def test_dinner_selection_avoids_non_meal_categories_when_real_mains_exist() -> None:
+def test_lunch_selection_avoids_non_meal_categories_when_real_mains_exist() -> None:
     profile = UserProfile()
     guacamole = RecipeCandidate(
         title="Guacamole",
@@ -465,7 +468,7 @@ def test_dinner_selection_avoids_non_meal_categories_when_real_mains_exist() -> 
     assert menu[0].recipe.title == "Meatloaf"
 
 
-def test_dinner_selection_falls_back_to_non_meal_categories_when_pool_is_thin() -> None:
+def test_lunch_selection_falls_back_to_non_meal_categories_when_pool_is_thin() -> None:
     # Only an appetizer is available; it's still better than leaving a day unplanned.
     profile = UserProfile()
     guacamole = RecipeCandidate(
@@ -481,7 +484,7 @@ def test_dinner_selection_falls_back_to_non_meal_categories_when_pool_is_thin() 
     assert menu[0].recipe.title == "Guacamole"
 
 
-def test_dinner_selection_keeps_recipes_with_both_non_meal_and_meal_tags() -> None:
+def test_lunch_selection_keeps_recipes_with_both_non_meal_and_meal_tags() -> None:
     # Tagged both Appetizer and Dinner (legitimately servable as either); the explicit
     # "Dinner" tag should win rather than excluding it as a non-meal category.
     profile = UserProfile()
@@ -503,3 +506,50 @@ def test_dinner_selection_keeps_recipes_with_both_non_meal_and_meal_tags() -> No
     menu = select_weekly_menu([meatballs, side_dish], profile, days=1)
 
     assert menu[0].recipe.title == "Turkey meatballs"
+
+
+def test_lunch_selection_cycles_through_a_thin_pool_instead_of_leaving_days_unplanned() -> None:
+    # Issue #25: only 2 candidates for a 4-day plan used to leave days 2 and 3 with
+    # no lunch at all; cycling must fill every day instead.
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title="Rice eggs bowl",
+            source_url="https://example.com/rice-eggs",
+            ingredients=("rice", "eggs"),
+            active_time_minutes=12,
+        ),
+        RecipeCandidate(
+            title="Lentil soup",
+            source_url="https://example.com/lentil-soup",
+            ingredients=("lentils", "carrot"),
+            active_time_minutes=12,
+        ),
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=4)
+
+    assert len(menu) == 4
+    # No two adjacent days repeat the same recipe.
+    assert all(menu[day].recipe != menu[day + 1].recipe for day in range(3))
+    # Day 2 repeats day 0's pick, day 3 repeats day 1's, since only 2 candidates exist.
+    assert menu[0].recipe == menu[2].recipe
+    assert menu[1].recipe == menu[3].recipe
+
+
+def test_lunch_selection_has_zero_repeats_when_the_pool_is_abundant() -> None:
+    profile = UserProfile()
+    recipes = [
+        RecipeCandidate(
+            title=f"Recipe {index}",
+            source_url=f"https://example.com/recipe-{index}",
+            ingredients=("filler",),
+            active_time_minutes=10,
+        )
+        for index in range(5)
+    ]
+
+    menu = select_weekly_menu(recipes, profile, days=5)
+
+    titles = [item.recipe.title for item in menu]
+    assert len(titles) == len(set(titles)) == 5

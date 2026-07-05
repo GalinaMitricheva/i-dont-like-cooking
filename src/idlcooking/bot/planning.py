@@ -251,7 +251,7 @@ class TelegramPlanningFacade:
         self,
         telegram_user_id: int,
         inventory_text: str = "",
-        include_lunch_leftovers: bool = True,
+        include_dinner_leftovers: bool = True,
         include_breakfast: bool = False,
         days: int = 7,
     ) -> TelegramPlanSummary:
@@ -267,7 +267,7 @@ class TelegramPlanningFacade:
             profile,
             inventory,
             days=days,
-            include_lunch_leftovers=include_lunch_leftovers,
+            include_dinner_leftovers=include_dinner_leftovers,
             include_breakfast=include_breakfast,
             liked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.LIKED),
             disliked_recipe_urls=self.feedback.get_recipe_urls_by_rating(user_id, Rating.DISLIKED),
@@ -321,6 +321,11 @@ class TelegramPlanningFacade:
         self.cycles.mark_cycle_status(cycle_id, "accepted")
         return True
 
+    def is_latest_cycle_accepted(self, telegram_user_id: int) -> bool:
+        user_id = self.ensure_user_defaults(telegram_user_id)
+        summary = self.cycles.get_latest_cycle_summary(user_id)
+        return summary is not None and summary["status"] == "accepted"
+
     def get_latest_shopping_list_lines(self, telegram_user_id: int) -> tuple[str, ...]:
         user_id = self.ensure_user_defaults(telegram_user_id)
         cycle_id = self.cycles.get_latest_cycle_id(user_id)
@@ -339,14 +344,6 @@ class TelegramPlanningFacade:
                 for item in items
             ]
         )
-
-    def mark_latest_shopping_list_bought(self, telegram_user_id: int) -> bool:
-        user_id = self.ensure_user_defaults(telegram_user_id)
-        cycle_id = self.cycles.get_latest_cycle_id(user_id)
-        if cycle_id is None:
-            return False
-        self.cycles.mark_all_items_bought(cycle_id)
-        return True
 
     def get_latest_recipe_details_by_day(
         self, telegram_user_id: int

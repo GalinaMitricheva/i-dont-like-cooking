@@ -36,7 +36,6 @@ _FEEDBACK_PREFIX = "feedback:"
 _PLAN_ACCEPT_CALLBACK = "plan:accept"
 _PLAN_REGENERATE_CALLBACK = "plan:regenerate"
 _PLAN_SHOPPING_LIST_CALLBACK = "plan:shopping_list"
-_PLAN_MARK_BOUGHT_CALLBACK = "plan:mark_bought"
 _PLAN_RATE_CALLBACK = "plan:rate"
 _PLAN_MEALS_PREFIX = "plan:meals:"
 _PLAN_RECIPES_CALLBACK = "plan:recipes"
@@ -283,9 +282,16 @@ def _feedback_keyboard(language: str, *, show_back: bool) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def plan_keyboard(language: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+def plan_keyboard(language: str, *, accepted: bool) -> InlineKeyboardMarkup:
+    """Build the plan's keyboard for its current state (issues #23, #27).
+
+    A draft can still be accepted, regenerated, or rated, is rated only once accepted,
+    since rating meals that haven't been cooked yet doesn't make sense. Accept and
+    Regenerate disappear once accepted since they no longer apply to a settled plan.
+    """
+    rows = []
+    if not accepted:
+        rows.append(
             [
                 InlineKeyboardButton(
                     text=t(language, "plan_accept_button"),
@@ -295,25 +301,30 @@ def plan_keyboard(language: str) -> InlineKeyboardMarkup:
                     text=t(language, "plan_regenerate_button"),
                     callback_data=_PLAN_REGENERATE_CALLBACK,
                 ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t(language, "plan_shopping_list_button"),
-                    callback_data=_PLAN_SHOPPING_LIST_CALLBACK,
-                ),
-                InlineKeyboardButton(
-                    text=t(language, "plan_recipes_button"),
-                    callback_data=_PLAN_RECIPES_CALLBACK,
-                ),
-            ],
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=t(language, "plan_shopping_list_button"),
+                callback_data=_PLAN_SHOPPING_LIST_CALLBACK,
+            ),
+            InlineKeyboardButton(
+                text=t(language, "plan_recipes_button"),
+                callback_data=_PLAN_RECIPES_CALLBACK,
+            ),
+        ]
+    )
+    if accepted:
+        rows.append(
             [
                 InlineKeyboardButton(
                     text=t(language, "plan_rate_button"),
                     callback_data=_PLAN_RATE_CALLBACK,
                 ),
-            ],
-        ]
-    )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _back_to_menu_button(language: str) -> InlineKeyboardButton:
@@ -344,26 +355,12 @@ def _recipe_view_keyboard(language: str, day_index: int, total_days: int) -> Inl
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _shopping_list_keyboard(language: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=t(language, "plan_mark_bought_button"),
-                    callback_data=_PLAN_MARK_BOUGHT_CALLBACK,
-                ),
-            ],
-            [_back_to_menu_button(language)],
-        ]
-    )
-
-
 _MEAL_CHOICES: dict[str, tuple[bool, bool]] = {
-    # choice -> (include_lunch_leftovers, include_breakfast)
-    "dinner_only": (False, False),
-    "dinner_and_lunch": (True, False),
-    "dinner_and_breakfast": (False, True),
-    "dinner_lunch_breakfast": (True, True),
+    # choice -> (include_dinner_leftovers, include_breakfast)
+    "lunch_only": (False, False),
+    "lunch_and_breakfast": (False, True),
+    "lunch_and_dinner": (True, False),
+    "lunch_dinner_breakfast": (True, True),
 }
 
 
@@ -372,10 +369,10 @@ def _plan_meals_keyboard(language: str) -> InlineKeyboardMarkup:
         language,
         _PLAN_MEALS_PREFIX,
         (
-            ("dinner_only", "plan_meals_dinner_only"),
-            ("dinner_and_lunch", "plan_meals_dinner_and_lunch"),
-            ("dinner_and_breakfast", "plan_meals_dinner_and_breakfast"),
-            ("dinner_lunch_breakfast", "plan_meals_all"),
+            ("lunch_only", "plan_meals_lunch_only"),
+            ("lunch_and_breakfast", "plan_meals_lunch_and_breakfast"),
+            ("lunch_and_dinner", "plan_meals_lunch_and_dinner"),
+            ("lunch_dinner_breakfast", "plan_meals_all"),
         ),
     )
     keyboard.inline_keyboard.append(
@@ -667,13 +664,13 @@ async def onboarding_body_metrics_sex(
 async def _send_plan(
     message: Message,
     summary_menu_lines: tuple[str, ...],
-    cycle_id: int,
     language: str,
 ) -> None:
     menu = "\n".join(summary_menu_lines)
     await message.answer(
-        t(language, "plan", planning_cycle_id=cycle_id, menu=menu),
-        reply_markup=plan_keyboard(language),
+        t(language, "plan", menu=menu),
+        # A freshly generated or regenerated plan is always an unaccepted draft.
+        reply_markup=plan_keyboard(language, accepted=False),
     )
 
 
@@ -730,9 +727,9 @@ async def plan_meals_callback(
         return
     language = resolve_language(callback.from_user.language_code)
     choice = callback.data.removeprefix(_PLAN_MEALS_PREFIX)
-    include_lunch_leftovers, include_breakfast = _MEAL_CHOICES.get(choice, (True, False))
+    include_dinner_leftovers, include_breakfast = _MEAL_CHOICES.get(choice, (True, False))
     await state.update_data(
-        plan_include_lunch_leftovers=include_lunch_leftovers,
+        plan_include_dinner_leftovers=include_dinner_leftovers,
         plan_include_breakfast=include_breakfast,
     )
 
@@ -740,13 +737,13 @@ async def plan_meals_callback(
     summary = planning_facade.generate_plan_from_text_inventory(
         callback.from_user.id,
         inventory_text=data.get("plan_inventory_text", ""),
-        include_lunch_leftovers=include_lunch_leftovers,
+        include_dinner_leftovers=include_dinner_leftovers,
         include_breakfast=include_breakfast,
         days=data.get("plan_days", 7),
     )
     # Exit the flow but keep the chosen settings so "Regenerate" can reuse them.
     await state.set_state(None)
-    await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
+    await _send_plan(callback.message, summary.menu_lines, language)
     await callback.answer()
 
 
@@ -758,7 +755,12 @@ async def plan_accept_callback(
         await callback.answer()
         return
     language = resolve_language(callback.from_user.language_code)
-    planning_facade.accept_latest_cycle(callback.from_user.id)
+    if planning_facade.accept_latest_cycle(callback.from_user.id):
+        # Reflect acceptance in the keyboard itself (issue #27): otherwise the user
+        # has no visible sign that tapping Accept did anything.
+        await callback.message.edit_reply_markup(
+            reply_markup=plan_keyboard(language, accepted=True)
+        )
     await callback.answer(t(language, "plan_accepted_toast"))
 
 
@@ -774,11 +776,11 @@ async def plan_regenerate_callback(
     summary = planning_facade.generate_plan_from_text_inventory(
         callback.from_user.id,
         inventory_text=data.get("plan_inventory_text", ""),
-        include_lunch_leftovers=data.get("plan_include_lunch_leftovers", True),
+        include_dinner_leftovers=data.get("plan_include_dinner_leftovers", True),
         include_breakfast=data.get("plan_include_breakfast", False),
         days=data.get("plan_days", 7),
     )
-    await _send_plan(callback.message, summary.menu_lines, summary.planning_cycle_id, language)
+    await _send_plan(callback.message, summary.menu_lines, language)
     await callback.answer()
 
 
@@ -797,22 +799,9 @@ async def plan_shopping_list_callback(
     shopping = "\n".join(lines[:30])
     await callback.message.answer(
         t(language, "plan_shopping_list", shopping=shopping),
-        reply_markup=_shopping_list_keyboard(language),
+        reply_markup=_back_only_keyboard(language),
     )
     await callback.answer()
-
-
-@router.callback_query(F.data == _PLAN_MARK_BOUGHT_CALLBACK)
-async def plan_mark_bought_callback(
-    callback: CallbackQuery, planning_facade: TelegramPlanningFacade
-) -> None:
-    if callback.from_user is None or not isinstance(callback.message, Message):
-        await callback.answer()
-        return
-    language = resolve_language(callback.from_user.language_code)
-    planning_facade.mark_latest_shopping_list_bought(callback.from_user.id)
-    await callback.message.edit_reply_markup(reply_markup=_back_only_keyboard(language))
-    await callback.answer(t(language, "plan_marked_bought_toast"))
 
 
 def _format_day_recipes(
@@ -900,9 +889,10 @@ async def plan_back_to_menu_callback(
         await callback.answer(t(language, "plan_no_recipes"), show_alert=True)
         return
     menu = "\n".join(summary.menu_lines)
+    accepted = planning_facade.is_latest_cycle_accepted(callback.from_user.id)
     await callback.message.edit_text(
-        t(language, "plan", planning_cycle_id=summary.planning_cycle_id, menu=menu),
-        reply_markup=plan_keyboard(language),
+        t(language, "plan", menu=menu),
+        reply_markup=plan_keyboard(language, accepted=accepted),
     )
     await callback.answer()
 
@@ -915,6 +905,11 @@ async def plan_rate_callback(
         await callback.answer()
         return
     language = resolve_language(callback.from_user.language_code)
+    # Defensive check (issue #23): the keyboard already hides this button on drafts,
+    # but a stale keyboard on an older message could still surface this callback.
+    if not planning_facade.is_latest_cycle_accepted(callback.from_user.id):
+        await callback.answer(t(language, "plan_not_accepted_yet_toast"), show_alert=True)
+        return
     await _start_feedback_flow(
         callback.message, planning_facade, state, callback.from_user.id, language
     )

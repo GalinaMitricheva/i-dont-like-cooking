@@ -2,12 +2,16 @@ from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 
 from idlcooking.bot.handlers import (
+    _PLAN_ACCEPT_CALLBACK,
     _PLAN_BACK_TO_MENU_CALLBACK,
+    _PLAN_RATE_CALLBACK,
+    _PLAN_REGENERATE_CALLBACK,
     _back_only_keyboard,
     _parse_list_answer,
     _resolve_message_language,
     _terminal_text,
     bot_commands,
+    plan_keyboard,
 )
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
@@ -56,6 +60,34 @@ def test_terminal_text_appends_help_hint_only_when_there_is_no_keyboard() -> Non
     assert without_keyboard == "Done.\n\nSend /help to see everything I can do."
 
 
+def test_plan_keyboard_draft_offers_accept_and_regenerate_but_not_rate() -> None:
+    # Issue #23: rating meals that haven't been cooked yet doesn't make sense.
+    buttons = [
+        button
+        for row in plan_keyboard("en", accepted=False).inline_keyboard
+        for button in row
+    ]
+    callback_data = [button.callback_data for button in buttons]
+
+    assert _PLAN_ACCEPT_CALLBACK in callback_data
+    assert _PLAN_REGENERATE_CALLBACK in callback_data
+    assert _PLAN_RATE_CALLBACK not in callback_data
+
+
+def test_plan_keyboard_accepted_drops_accept_and_regenerate_but_offers_rate() -> None:
+    # Issue #27: once accepted, Accept/Regenerate no longer apply to a settled plan.
+    buttons = [
+        button
+        for row in plan_keyboard("en", accepted=True).inline_keyboard
+        for button in row
+    ]
+    callback_data = [button.callback_data for button in buttons]
+
+    assert _PLAN_ACCEPT_CALLBACK not in callback_data
+    assert _PLAN_REGENERATE_CALLBACK not in callback_data
+    assert _PLAN_RATE_CALLBACK in callback_data
+
+
 def test_back_only_keyboard_points_to_the_plan_menu() -> None:
     keyboard = _back_only_keyboard("en")
 
@@ -90,47 +122,47 @@ def test_telegram_planning_facade_generates_and_persists_plan() -> None:
     )
 
     assert summary.planning_cycle_id == 1
-    # 7 dinners plus a leftover lunch for every day after the first.
-    assert len(summary.menu_lines) == 13
+    # 7 lunches plus a same-day leftover dinner for every day.
+    assert len(summary.menu_lines) == 14
     assert any("(dinner)" in line for line in summary.menu_lines)
     assert any("(lunch)" in line for line in summary.menu_lines)
     assert any("already have" in line for line in summary.shopping_lines)
 
 
-def test_telegram_planning_facade_can_disable_lunch_leftovers() -> None:
+def test_telegram_planning_facade_can_disable_dinner_leftovers() -> None:
     facade = _offline_facade()
 
     summary = facade.generate_plan_from_text_inventory(
-        telegram_user_id=12345, inventory_text="rice", include_lunch_leftovers=False
+        telegram_user_id=12345, inventory_text="rice", include_dinner_leftovers=False
     )
 
     assert len(summary.menu_lines) == 7
-    assert all("(lunch)" not in line for line in summary.menu_lines)
+    assert all("(dinner)" not in line for line in summary.menu_lines)
 
 
 def test_telegram_planning_facade_respects_requested_day_count() -> None:
     facade = _offline_facade()
 
-    dinner_only = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, days=3, include_lunch_leftovers=False
+    lunch_only = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
     )
-    assert len(dinner_only.menu_lines) == 3
+    assert len(lunch_only.menu_lines) == 3
 
-    with_lunches = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, days=3, include_lunch_leftovers=True
+    with_dinners = facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=3, include_dinner_leftovers=True
     )
-    # 3 dinners plus a leftover lunch for every day after the first.
-    assert len(with_lunches.menu_lines) == 5
+    # 3 lunches plus a same-day leftover dinner for every day.
+    assert len(with_dinners.menu_lines) == 6
 
 
 def test_telegram_planning_facade_can_include_breakfast() -> None:
     facade = _offline_facade()
 
     summary = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, days=3, include_lunch_leftovers=False, include_breakfast=True
+        telegram_user_id=1, days=3, include_dinner_leftovers=False, include_breakfast=True
     )
 
-    # 3 dinners plus a breakfast for every day.
+    # 3 lunches plus a breakfast for every day.
     assert len(summary.menu_lines) == 6
     assert any("(breakfast)" in line for line in summary.menu_lines)
 
@@ -151,7 +183,7 @@ def test_telegram_planning_facade_caches_discovered_recipes_and_reuses_them() ->
     facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
 
     first = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, include_lunch_leftovers=False
+        telegram_user_id=1, include_dinner_leftovers=False
     )
     assert any("Discovered Soup" in line for line in first.menu_lines)
     assert [recipe.source_url for recipe in facade.recipe_catalog.get_all_recipes()] == [
@@ -161,7 +193,7 @@ def test_telegram_planning_facade_caches_discovered_recipes_and_reuses_them() ->
     # Second call must reuse the cache and never hit discovery again.
     discovery.discover = discover_once  # type: ignore[method-assign]
     second = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, include_lunch_leftovers=False
+        telegram_user_id=1, include_dinner_leftovers=False
     )
     assert any("Discovered Soup" in line for line in second.menu_lines)
 
@@ -175,7 +207,7 @@ def test_telegram_planning_facade_falls_back_to_seed_recipes_when_discovery_fail
     facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
 
     summary = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, include_lunch_leftovers=False
+        telegram_user_id=1, include_dinner_leftovers=False
     )
 
     assert len(summary.menu_lines) == 7
@@ -264,7 +296,7 @@ def test_telegram_planning_facade_has_no_feedback_targets_without_a_plan() -> No
 
 def test_telegram_planning_facade_feedback_targets_deduplicate_lunch_leftovers() -> None:
     facade = _offline_facade()
-    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_lunch_leftovers=True)
+    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_dinner_leftovers=True)
 
     targets = facade.get_latest_cycle_feedback_targets(telegram_user_id=1)
 
@@ -293,7 +325,7 @@ def test_telegram_planning_facade_feedback_excludes_disliked_recipe_from_next_pl
     facade = TelegramPlanningFacade("sqlite:///:memory:", recipe_discovery=discovery)
 
     first = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, include_lunch_leftovers=False
+        telegram_user_id=1, include_dinner_leftovers=False
     )
     assert "Recipe A" in first.menu_lines[0]
 
@@ -311,7 +343,7 @@ def test_telegram_planning_facade_feedback_excludes_disliked_recipe_from_next_pl
     )
 
     second = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, include_lunch_leftovers=False
+        telegram_user_id=1, include_dinner_leftovers=False
     )
     assert all("Recipe A" not in line for line in second.menu_lines)
     assert "Recipe B" in second.menu_lines[0]
@@ -322,19 +354,30 @@ def test_telegram_planning_facade_accept_latest_cycle() -> None:
 
     assert facade.accept_latest_cycle(telegram_user_id=1) is False
 
-    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_lunch_leftovers=False)
+    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_dinner_leftovers=False)
 
     assert facade.accept_latest_cycle(telegram_user_id=1) is True
 
 
-def test_telegram_planning_facade_shopping_list_lines_and_mark_bought() -> None:
+def test_telegram_planning_facade_reports_whether_latest_cycle_is_accepted() -> None:
+    facade = _offline_facade()
+
+    assert facade.is_latest_cycle_accepted(telegram_user_id=1) is False
+
+    facade.generate_plan_from_text_inventory(telegram_user_id=1, include_dinner_leftovers=False)
+    assert facade.is_latest_cycle_accepted(telegram_user_id=1) is False
+
+    facade.accept_latest_cycle(telegram_user_id=1)
+    assert facade.is_latest_cycle_accepted(telegram_user_id=1) is True
+
+
+def test_telegram_planning_facade_shopping_list_lines() -> None:
     facade = _offline_facade()
 
     assert facade.get_latest_shopping_list_lines(telegram_user_id=1) == ()
-    assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is False
 
     facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, inventory_text="rice", include_lunch_leftovers=False
+        telegram_user_id=1, inventory_text="rice", include_dinner_leftovers=False
     )
 
     lines = facade.get_latest_shopping_list_lines(telegram_user_id=1)
@@ -342,7 +385,6 @@ def test_telegram_planning_facade_shopping_list_lines_and_mark_bought() -> None:
     assert any("already have" in line for line in lines)
     # Grouped by category: at least one category header line ending in ":".
     assert any(line.endswith(":") for line in lines)
-    assert facade.mark_latest_shopping_list_bought(telegram_user_id=1) is True
 
 
 def test_telegram_planning_facade_returns_recipe_details_grouped_by_day() -> None:
@@ -351,12 +393,12 @@ def test_telegram_planning_facade_returns_recipe_details_grouped_by_day() -> Non
     assert facade.get_latest_recipe_details_by_day(telegram_user_id=1) == []
 
     facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, days=2, include_lunch_leftovers=True
+        telegram_user_id=1, days=2, include_dinner_leftovers=True
     )
 
     days = facade.get_latest_recipe_details_by_day(telegram_user_id=1)
     assert len(days) == 2
-    assert [item.meal_type for item in days[0]] == ["dinner"]
+    assert [item.meal_type for item in days[0]] == ["lunch", "dinner"]
     assert [item.meal_type for item in days[1]] == ["lunch", "dinner"]
     assert days[0][0].source_url.startswith("https://")
     assert isinstance(days[0][0].ingredients, tuple)
@@ -368,7 +410,7 @@ def test_telegram_planning_facade_rebuilds_plan_summary_without_regenerating() -
     assert facade.get_latest_plan_summary(telegram_user_id=1) is None
 
     original = facade.generate_plan_from_text_inventory(
-        telegram_user_id=1, days=3, include_lunch_leftovers=False
+        telegram_user_id=1, days=3, include_dinner_leftovers=False
     )
 
     rebuilt = facade.get_latest_plan_summary(telegram_user_id=1)

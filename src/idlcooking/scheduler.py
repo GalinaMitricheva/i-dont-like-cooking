@@ -28,8 +28,8 @@ async def run_due_planning_cycles(bot: Bot, planning_facade: TelegramPlanningFac
             menu = "\n".join(summary.menu_lines)
             await bot.send_message(
                 telegram_user_id,
-                t(language, "plan", planning_cycle_id=summary.planning_cycle_id, menu=menu),
-                reply_markup=plan_keyboard(language),
+                t(language, "plan", menu=menu),
+                reply_markup=plan_keyboard(language, accepted=False),
             )
             planning_facade.mark_schedule_triggered(telegram_user_id, now)
         except Exception:

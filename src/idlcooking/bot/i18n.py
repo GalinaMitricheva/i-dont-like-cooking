@@ -10,7 +10,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Start with /plan. If you want to account for food you already have, write:\n"
             "/plan rice, eggs, cucumber"
         ),
-        "plan": "Draft menu #{planning_cycle_id}:\n\n{menu}",
+        "plan": "Here's your draft menu:\n\n{menu}",
         "plan_shopping_list": "Shopping list:\n{shopping}",
         "plan_no_shopping_list": "No shopping list yet — try /plan first.",
         "plan_accept_button": "✅ Accept menu",
@@ -18,9 +18,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "plan_shopping_list_button": "\U0001F6D2 Show shopping list",
         "plan_recipes_button": "\U0001F4D6 View recipes",
         "plan_rate_button": "\U0001F4DD Rate your meals",
-        "plan_mark_bought_button": "✅ Mark all bought",
         "plan_accepted_toast": "Menu accepted!",
-        "plan_marked_bought_toast": "Shopping list marked as bought.",
+        "plan_not_accepted_yet_toast": "Accept your menu first, then you can rate it.",
         "plan_no_recipes": "No recipes to show yet — try /plan first.",
         "recipe_view_day_header": "Day {day}",
         "recipe_view_previous_button": "◀ Previous day",
@@ -30,10 +29,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "plan_days_invalid": "Please reply with a whole number from 1 to 7.",
         "plan_meals_prompt": "Which meals should I include?",
-        "plan_meals_dinner_only": "Dinner only",
-        "plan_meals_dinner_and_lunch": "Dinner + lunch leftovers",
-        "plan_meals_dinner_and_breakfast": "Dinner + breakfast",
-        "plan_meals_all": "Dinner + lunch leftovers + breakfast",
+        "plan_meals_lunch_only": "Lunch only",
+        "plan_meals_lunch_and_breakfast": "Lunch + breakfast",
+        "plan_meals_lunch_and_dinner": "Lunch + dinner leftovers",
+        "plan_meals_all": "Breakfast + lunch + dinner leftovers",
         "schedule_current": (
             "Current schedule: {weekday_name}, {at_time} ({timezone}).\n\n"
             "To change it, send:\n/schedule <weekday> <HH:MM> [timezone]\n"

@@ -687,7 +687,7 @@ Mitigation:
 - Interface: Telegram bot.
 - Language: English first, localization-ready architecture.
 - Planning cadence: Saturday morning by default, user-configurable.
-- First planning scope: dinners plus optional leftovers for lunches.
+- First planning scope: lunches plus optional same-day leftovers for dinners.
 - Inventory: fridge photo plus quick confirmation, manual fallback.
 - Photo recognition: optional local Ollama adapter.
 - Nutrition: approximate, optional body metrics.

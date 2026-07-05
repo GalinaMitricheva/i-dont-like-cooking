@@ -172,7 +172,7 @@ def test_get_latest_cycle_menu_items_deduplicates_lunch_leftovers() -> None:
                 active_time_minutes=10,
             ),
         )
-    ).generate_weekly_plan(UserProfile(), days=2, include_lunch_leftovers=True)
+    ).generate_weekly_plan(UserProfile(), days=2, include_dinner_leftovers=True)
     cycles.save_generated_plan(user_id, plan)
 
     result = cycles.get_latest_cycle_menu_items(user_id)
@@ -234,7 +234,7 @@ def test_feedback_repository_saves_and_filters_by_rating() -> None:
     assert feedback.get_recipe_urls_by_rating(user_id, Rating.NEUTRAL) == frozenset()
 
 
-def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
+def test_planning_cycle_repository_accept_and_shopping_list_lines() -> None:
     connection = connect("sqlite:///:memory:")
     initialize_database(connection)
     users = UserRepository(connection)
@@ -266,10 +266,6 @@ def test_planning_cycle_repository_accept_and_shopping_list_actions() -> None:
         ("rice", "2 cups", True),
     ]
 
-    cycles.mark_all_items_bought(planning_cycle_id)
-    lines_after = cycles.get_shopping_list_lines(planning_cycle_id)
-    assert all(item["checked"] for item in lines_after)
-
 
 def test_planning_cycle_repository_returns_menu_items_grouped_by_day() -> None:
     connection = connect("sqlite:///:memory:")
@@ -294,17 +290,17 @@ def test_planning_cycle_repository_returns_menu_items_grouped_by_day() -> None:
                 active_time_minutes=15,
             ),
         )
-    ).generate_weekly_plan(UserProfile(), days=2, include_lunch_leftovers=True)
+    ).generate_weekly_plan(UserProfile(), days=2, include_dinner_leftovers=True)
     planning_cycle_id = cycles.save_generated_plan(user_id, plan)
 
     by_day = cycles.get_menu_items_by_day(planning_cycle_id)
 
     assert set(by_day.keys()) == {0, 1}
-    assert [item["meal_type"] for item in by_day[0]] == ["dinner"]
+    assert [item["meal_type"] for item in by_day[0]] == ["lunch", "dinner"]
     assert [item["meal_type"] for item in by_day[1]] == ["lunch", "dinner"]
-    day0_dinner = by_day[0][0]
-    assert day0_dinner["ingredients"] == ("rice", "eggs")
-    assert day0_dinner["steps_summary"] == "Cook rice. Fry eggs. Combine."
+    day0_lunch = by_day[0][0]
+    assert day0_lunch["ingredients"] == ("rice", "eggs")
+    assert day0_lunch["steps_summary"] == "Cook rice. Fry eggs. Combine."
 
 
 def test_schedule_repository_lists_enabled_schedules_with_telegram_ids() -> None:
