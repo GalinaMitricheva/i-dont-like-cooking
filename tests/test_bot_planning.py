@@ -1,7 +1,14 @@
 from datetime import UTC, datetime, time, timedelta
 from types import SimpleNamespace
 
-from idlcooking.bot.handlers import _parse_list_answer, _resolve_message_language
+from idlcooking.bot.handlers import (
+    _PLAN_BACK_TO_MENU_CALLBACK,
+    _back_only_keyboard,
+    _parse_list_answer,
+    _resolve_message_language,
+    _terminal_text,
+    bot_commands,
+)
 from idlcooking.bot.i18n import resolve_language, t
 from idlcooking.bot.planning import TelegramPlanningFacade
 from idlcooking.domain.feedback import CookedStatus, Rating, RecipeFeedback
@@ -21,6 +28,50 @@ def test_bot_language_defaults_to_english() -> None:
     assert resolve_language(None) == "en"
     assert resolve_language("ru") == "en"
     assert "weekly menu" in t("en", "start")
+
+
+def test_bot_commands_lists_every_expected_command_with_a_description() -> None:
+    commands = bot_commands("en")
+
+    assert [name for name, _ in commands] == [
+        "start",
+        "plan",
+        "schedule",
+        "profile",
+        "feedback",
+        "fridge",
+        "help",
+        "delete_my_data",
+    ]
+    assert all(description.strip() for _, description in commands)
+
+
+def test_terminal_text_appends_help_hint_only_when_there_is_no_keyboard() -> None:
+    # Issue #20: a terminal response without its own keyboard must still point
+    # somewhere, so callers can't silently reintroduce a dead end.
+    with_keyboard = _terminal_text("en", "Done.", has_keyboard=True)
+    without_keyboard = _terminal_text("en", "Done.", has_keyboard=False)
+
+    assert with_keyboard == "Done."
+    assert without_keyboard == "Done.\n\nSend /help to see everything I can do."
+
+
+def test_back_only_keyboard_points_to_the_plan_menu() -> None:
+    keyboard = _back_only_keyboard("en")
+
+    assert len(keyboard.inline_keyboard) == 1
+    assert len(keyboard.inline_keyboard[0]) == 1
+    assert keyboard.inline_keyboard[0][0].callback_data == _PLAN_BACK_TO_MENU_CALLBACK
+
+
+def test_help_message_includes_every_command() -> None:
+    commands_text = "\n".join(
+        f"/{command} — {description}" for command, description in bot_commands("en")
+    )
+    text = t("en", "help", commands=commands_text)
+
+    for command, _ in bot_commands("en"):
+        assert f"/{command}" in text
 
 
 def test_resolve_message_language_is_consistent_for_every_handler() -> None:

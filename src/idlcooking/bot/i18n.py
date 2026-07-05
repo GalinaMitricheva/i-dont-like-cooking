@@ -146,6 +146,16 @@ MESSAGES: dict[str, dict[str, str]] = {
         "feedback_too_expensive_button": "\U0001F4B8 Too expensive",
         "feedback_skipped_button": "\U0001F6AB Didn't cook it",
         "feedback_complete": "Thanks for the feedback! I'll use it to improve your next plan.",
+        "help_hint": "Send /help to see everything I can do.",
+        "help": "Here's what I can do:\n\n{commands}",
+        "help_cmd_start": "Begin or restart onboarding",
+        "help_cmd_plan": "Generate a weekly menu and shopping list",
+        "help_cmd_schedule": "View or change your weekly planning schedule",
+        "help_cmd_profile": "View your saved profile",
+        "help_cmd_feedback": "Rate how this week's meals went",
+        "help_cmd_fridge": "Add food you already have",
+        "help_cmd_help": "Show this list of commands",
+        "help_cmd_delete_my_data": "Permanently delete your stored data",
     }
 }
 

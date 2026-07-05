@@ -45,6 +45,19 @@ _PLAN_BACK_TO_MENU_CALLBACK = "plan:back_to_menu"
 _PLAN_BACK_TO_DAYS_CALLBACK = "plan:back_to_days"
 _FEEDBACK_BACK_CALLBACK = "feedback:back"
 
+# Command names shared between /help and the Telegram native command menu
+# (Bot.set_my_commands in bot/main.py), so the two can never drift apart.
+_COMMAND_NAMES: tuple[str, ...] = (
+    "start",
+    "plan",
+    "schedule",
+    "profile",
+    "feedback",
+    "fridge",
+    "help",
+    "delete_my_data",
+)
+
 _FEEDBACK_CHOICES: dict[str, tuple[CookedStatus, Rating, str | None, str | None]] = {
     "liked": (CookedStatus.COOKED, Rating.LIKED, None, None),
     "neutral": (CookedStatus.COOKED, Rating.NEUTRAL, None, None),
@@ -78,6 +91,29 @@ class FeedbackStates(StatesGroup):
 class PlanStates(StatesGroup):
     days = State()
     meals = State()
+
+
+def bot_commands(language: str) -> tuple[tuple[str, str], ...]:
+    """Command name/description pairs, shared by /help and Bot.set_my_commands."""
+    return tuple((command, t(language, f"help_cmd_{command}")) for command in _COMMAND_NAMES)
+
+
+def _terminal_text(language: str, text: str, *, has_keyboard: bool) -> str:
+    """Ensure a terminal bot response always points somewhere further (issue #20).
+
+    Several handlers used to send a final message with no keyboard and no mention of
+    what to do next, leaving the conversation at a dead end. Routing a terminal
+    response's text through this helper means a new handler has to explicitly pass
+    `has_keyboard=True` (because it attached a relevant keyboard) to opt out of the
+    generic "/help" pointer, rather than silently omitting both.
+    """
+    if has_keyboard:
+        return text
+    return f"{text}\n\n{t(language, 'help_hint')}"
+
+
+def _back_only_keyboard(language: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_back_to_menu_button(language)]])
 
 
 def _telegram_user_id(message: Message) -> int:
@@ -775,7 +811,7 @@ async def plan_mark_bought_callback(
         return
     language = resolve_language(callback.from_user.language_code)
     planning_facade.mark_latest_shopping_list_bought(callback.from_user.id)
-    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.edit_reply_markup(reply_markup=_back_only_keyboard(language))
     await callback.answer(t(language, "plan_marked_bought_toast"))
 
 
@@ -935,12 +971,16 @@ async def schedule(message: Message, planning_facade: TelegramPlanningFacade) ->
         timezone=timezone_name,
     )
     await message.answer(
-        t(
+        _terminal_text(
             language,
-            "schedule_updated",
-            weekday_name=summary.weekday_name,
-            at_time=summary.at_time,
-            timezone=summary.timezone,
+            t(
+                language,
+                "schedule_updated",
+                weekday_name=summary.weekday_name,
+                at_time=summary.at_time,
+                timezone=summary.timezone,
+            ),
+            has_keyboard=False,
         )
     )
 
@@ -952,14 +992,18 @@ async def profile(message: Message, planning_facade: TelegramPlanningFacade) -> 
         return
     summary = planning_facade.get_profile_summary(_telegram_user_id(message))
     await message.answer(
-        t(
+        _terminal_text(
             language,
-            "profile",
-            household_size=summary.household_size,
-            cooking_effort_minutes=summary.cooking_effort_minutes,
-            planning_weekday=summary.planning_weekday,
-            planning_time=summary.planning_time,
-            timezone=summary.timezone,
+            t(
+                language,
+                "profile",
+                household_size=summary.household_size,
+                cooking_effort_minutes=summary.cooking_effort_minutes,
+                planning_weekday=summary.planning_weekday,
+                planning_time=summary.planning_time,
+                timezone=summary.timezone,
+            ),
+            has_keyboard=False,
         )
     )
 
@@ -971,7 +1015,9 @@ async def _send_next_feedback_prompt(message: Message, state: FSMContext, langua
 
     if index >= len(items):
         await state.clear()
-        await message.answer(t(language, "feedback_complete"))
+        await message.answer(
+            t(language, "feedback_complete"), reply_markup=_back_only_keyboard(language)
+        )
         return
 
     await message.answer(
@@ -1065,6 +1111,15 @@ async def feedback_callback(
     await callback.answer()
 
 
+@router.message(Command("help"))
+async def help_command(message: Message) -> None:
+    language = _resolve_message_language(message)
+    commands_text = "\n".join(
+        f"/{command} — {description}" for command, description in bot_commands(language)
+    )
+    await message.answer(t(language, "help", commands=commands_text))
+
+
 @router.message(Command("fridge"))
 async def fridge(message: Message) -> None:
     language = _resolve_message_language(message)
@@ -1093,5 +1148,7 @@ async def delete_my_data_callback(
         planning_facade.delete_user_data(callback.from_user.id)
         await callback.message.edit_text(t(language, "delete_my_data_done"))
     else:
-        await callback.message.edit_text(t(language, "delete_my_data_cancelled"))
+        await callback.message.edit_text(
+            _terminal_text(language, t(language, "delete_my_data_cancelled"), has_keyboard=False)
+        )
     await callback.answer()
