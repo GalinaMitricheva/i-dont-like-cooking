@@ -105,6 +105,24 @@ def _is_breakfast_tagged(recipe: RecipeCandidate) -> bool:
     return any("breakfast" in tag.lower() for tag in recipe.tags)
 
 
+# Category strings are messy free text scraped from many different sites (see
+# recipe_discovery.CURATED_RECIPE_URLS), so this is a best-effort heuristic rather than a
+# precise classification. A recipe is only treated as "not a full meal" when none of its
+# tags affirmatively say otherwise, so e.g. a recipe tagged both "Appetizer" and "Dinner"
+# (legitimately servable as either) is not excluded.
+_MEAL_AFFIRMING_KEYWORDS = (
+    "dinner", "lunch", "main course", "main dish", "main meal", "entree", "entrée",
+)
+_NON_MEAL_KEYWORDS = ("appetizer", "side dish", "side", "dessert", "sauce", "snack")
+
+
+def _is_non_meal_tagged(recipe: RecipeCandidate) -> bool:
+    tags_lower = [tag.lower() for tag in recipe.tags]
+    if any(keyword in tag for tag in tags_lower for keyword in _MEAL_AFFIRMING_KEYWORDS):
+        return False
+    return any(keyword in tag for tag in tags_lower for keyword in _NON_MEAL_KEYWORDS)
+
+
 def _rank_recipes(
     recipes: list[RecipeCandidate],
     profile: UserProfile,
@@ -133,9 +151,16 @@ def select_weekly_menu(
 
     # Avoid quick breakfast recipes (which tend to score well on low active time)
     # crowding out dinner-appropriate ones, unless there's nothing else to choose from.
-    dinner_candidates = [
-        recipe for recipe in eligible if not _is_breakfast_tagged(recipe)
-    ] or eligible
+    # Within that, prefer recipes that aren't tagged as clearly non-meal categories
+    # (appetizer/side/dessert/sauce/snack), falling back progressively rather than
+    # jumping straight to "every eligible recipe" so a side dish or dessert doesn't
+    # stand in for a whole dinner unless there's truly nothing else.
+    non_breakfast = [recipe for recipe in eligible if not _is_breakfast_tagged(recipe)]
+    dinner_candidates = (
+        [recipe for recipe in non_breakfast if not _is_non_meal_tagged(recipe)]
+        or non_breakfast
+        or eligible
+    )
     ranked = _rank_recipes(
         dinner_candidates, profile, inventory, liked_recipe_urls, disliked_recipe_urls
     )

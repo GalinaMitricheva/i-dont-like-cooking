@@ -441,3 +441,65 @@ def test_breakfast_is_excluded_by_default() -> None:
     menu = select_weekly_menu(recipes, profile, days=1)
 
     assert all(item.meal_type != MealType.BREAKFAST for item in menu)
+
+
+def test_dinner_selection_avoids_non_meal_categories_when_real_mains_exist() -> None:
+    profile = UserProfile()
+    guacamole = RecipeCandidate(
+        title="Guacamole",
+        source_url="https://example.com/guacamole",
+        ingredients=("avocado",),
+        active_time_minutes=5,
+        tags=("Appetizer",),
+    )
+    meatloaf = RecipeCandidate(
+        title="Meatloaf",
+        source_url="https://example.com/meatloaf",
+        ingredients=("beef",),
+        active_time_minutes=15,
+        tags=("Dinner",),
+    )
+
+    menu = select_weekly_menu([guacamole, meatloaf], profile, days=1)
+
+    assert menu[0].recipe.title == "Meatloaf"
+
+
+def test_dinner_selection_falls_back_to_non_meal_categories_when_pool_is_thin() -> None:
+    # Only an appetizer is available; it's still better than leaving a day unplanned.
+    profile = UserProfile()
+    guacamole = RecipeCandidate(
+        title="Guacamole",
+        source_url="https://example.com/guacamole",
+        ingredients=("avocado",),
+        active_time_minutes=5,
+        tags=("Appetizer",),
+    )
+
+    menu = select_weekly_menu([guacamole], profile, days=1)
+
+    assert menu[0].recipe.title == "Guacamole"
+
+
+def test_dinner_selection_keeps_recipes_with_both_non_meal_and_meal_tags() -> None:
+    # Tagged both Appetizer and Dinner (legitimately servable as either); the explicit
+    # "Dinner" tag should win rather than excluding it as a non-meal category.
+    profile = UserProfile()
+    meatballs = RecipeCandidate(
+        title="Turkey meatballs",
+        source_url="https://example.com/meatballs",
+        ingredients=("turkey",),
+        active_time_minutes=15,
+        tags=("Appetizer", "Dinner"),
+    )
+    side_dish = RecipeCandidate(
+        title="Mashed potatoes",
+        source_url="https://example.com/mashed-potatoes",
+        ingredients=("potato",),
+        active_time_minutes=10,
+        tags=("Side Dish",),
+    )
+
+    menu = select_weekly_menu([meatballs, side_dish], profile, days=1)
+
+    assert menu[0].recipe.title == "Turkey meatballs"

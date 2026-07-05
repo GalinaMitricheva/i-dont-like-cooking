@@ -23,30 +23,59 @@ _FALLBACK_ACTIVE_TIME_MINUTES = 30
 # - eatingwell.com: no working recipe URL found (404s and a 403 on the ones tried).
 # - bbcgoodfood.com's "healthy recipes" collection page is a category listing with no
 #   Recipe schema of its own; the site is already represented below via a recipe page.
+# - allrecipes.com started returning HTTP 403 on every request (as of this check), the
+#   same site-wide-block pattern as damndelicious.net above; its two entries were removed
+#   from the list below rather than left in to fail silently on every discovery run.
+#
+# As of the most recent pass (issue #19), category tags were pulled for every URL below via
+# recipe-scrapers to keep the pool balanced across meal types (breakfast/lunch-appropriate,
+# not just dinner) and across protein sources/cuisines/vegetarian options, rather than
+# skewing toward dinner mains only.
 CURATED_RECIPE_URLS: tuple[str, ...] = (
-    "https://www.allrecipes.com/recipe/16354/easy-meatloaf/",
-    "https://www.allrecipes.com/recipe/158968/spinach-and-feta-turkey-burgers/",
     "https://www.bbcgoodfood.com/recipes/easy-pancakes",
     "https://cookieandkate.com/best-guacamole-recipe/",
     "https://cookieandkate.com/easy-tomato-salad-recipe/",
     "https://cookieandkate.com/simple-marinara-sauce-recipe/",
     "https://cookieandkate.com/easy-refried-beans-recipe/",
+    "https://cookieandkate.com/vegetarian-chili-recipe/",
     "https://www.loveandlemons.com/lentil-soup/",
     "https://www.loveandlemons.com/hummus-recipe/",
+    "https://www.loveandlemons.com/vegetable-soup/",
     "https://www.budgetbytes.com/easy-crustless-quiche/",
+    "https://www.budgetbytes.com/dan-dan-noodles/",
     "https://www.skinnytaste.com/air-fryer-chicken-thighs/",
     "https://www.skinnytaste.com/blintz/",
+    "https://www.skinnytaste.com/greek-turkey-meatballs/",
+    "https://www.skinnytaste.com/high-protein-scrambled-eggs-with-cottage-cheese/",
+    "https://www.skinnytaste.com/mushroom-spinach-scrambled-eggs/",
+    "https://www.skinnytaste.com/high-protein-omelet/",
+    "https://www.skinnytaste.com/veggie-ham-egg-and-cheese-bake/",
     "https://www.themediterraneandish.com/vegetable-frittata/",
     "https://www.themediterraneandish.com/creamy-orzo-with-tomatoes/",
+    "https://www.themediterraneandish.com/chicken-shawarma/",
     "https://www.wellplated.com/ground-beef-and-potatoes/",
     "https://www.wellplated.com/baked-chicken-parmesan/",
     "https://www.wellplated.com/smash-tacos/",
+    "https://www.wellplated.com/baked-oatmeal/",
+    "https://www.wellplated.com/vegetarian-enchiladas/",
     "https://downshiftology.com/recipes/shakshuka/",
     "https://downshiftology.com/recipes/easy-roast-chicken/",
     "https://downshiftology.com/recipes/best-ever-guacamole/",
     "https://www.recipetineats.com/chicken-breast-recipe/",
     "https://www.recipetineats.com/panna-cotta/",
     "https://www.recipetineats.com/mashed-potato/",
+    "https://tastesbetterfromscratch.com/breakfast-burritos/",
+    "https://www.gimmesomeoven.com/easy-lime-chicken/",
+    "https://www.gimmesomeoven.com/baked-chicken-breast/",
+    "https://www.gimmesomeoven.com/lemon-pepper-chicken-and-asparagus/",
+    "https://www.gimmesomeoven.com/chicken-broccoli-recipe/",
+    "https://www.gimmesomeoven.com/best-chicken-enchiladas-ever/",
+    "https://www.gimmesomeoven.com/moo-shu-pork/",
+    "https://natashaskitchen.com/baked-salmon-with-garlic-and-dijon/",
+    "https://natashaskitchen.com/teriyaki-salmon-recipe/",
+    "https://natashaskitchen.com/tuscan-salmon-recipe/",
+    "https://minimalistbaker.com/mediterranean-baked-sweet-potatoes/",
+    "https://minimalistbaker.com/easy-vegan-fried-rice/",
 )
 
 
