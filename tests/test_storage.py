@@ -12,6 +12,7 @@ from idlcooking.domain.profile import (
 )
 from idlcooking.domain.schedule import PlanningSchedule
 from idlcooking.storage import connect, initialize_database
+from idlcooking.storage.database import MIGRATIONS
 from idlcooking.storage.repositories import (
     FeedbackRepository,
     PlanningCycleRepository,
@@ -328,3 +329,96 @@ def test_schedule_repository_lists_enabled_schedules_with_telegram_ids() -> None
     schedules.mark_schedule_triggered(111, "2026-07-04T09:00:00+00:00")
     results_after = schedules.get_enabled_schedules_with_telegram_ids()
     assert results_after[0][2] == "2026-07-04T09:00:00+00:00"
+
+
+def test_initialize_database_is_idempotent() -> None:
+    connection = connect("sqlite:///:memory:")
+
+    initialize_database(connection)
+    initialize_database(connection)
+
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
+
+
+def test_initialize_database_self_heals_a_pre_migration_database() -> None:
+    # Recreate the very first schema this project shipped: no budget_level, no
+    # recipes/feedback tables, no shopping_list_items.quantity, no
+    # planning_schedules.last_triggered_at, no menu_items.steps_summary. Running
+    # initialize_database against this must add the missing pieces instead of
+    # raising sqlite3.OperationalError, since PRAGMA user_version is 0 by default
+    # on any database that predates this migration system.
+    connection = connect("sqlite:///:memory:")
+    connection.executescript(
+        """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_user_id INTEGER NOT NULL UNIQUE,
+            language TEXT NOT NULL DEFAULT 'en',
+            timezone TEXT NOT NULL DEFAULT 'Europe/Berlin',
+            consent_version TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE user_profiles (
+            user_id INTEGER PRIMARY KEY,
+            household_size INTEGER NOT NULL DEFAULT 1,
+            cooking_effort_minutes INTEGER NOT NULL DEFAULT 20,
+            allergies_json TEXT NOT NULL DEFAULT '[]',
+            hard_restrictions_json TEXT NOT NULL DEFAULT '[]',
+            disliked_ingredients_json TEXT NOT NULL DEFAULT '[]',
+            favorite_tags_json TEXT NOT NULL DEFAULT '[]',
+            activity_level TEXT NOT NULL DEFAULT 'light',
+            nutrition_goal TEXT NOT NULL DEFAULT 'maintain',
+            body_metrics_json TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE planning_schedules (
+            user_id INTEGER PRIMARY KEY,
+            weekday INTEGER NOT NULL DEFAULT 5,
+            at_time TEXT NOT NULL DEFAULT '09:00',
+            timezone TEXT NOT NULL DEFAULT 'Europe/Berlin',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE planning_cycles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'generated',
+            generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            planning_cycle_id INTEGER NOT NULL,
+            day_index INTEGER NOT NULL,
+            meal_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            source_url TEXT NOT NULL,
+            active_time_minutes INTEGER NOT NULL,
+            score REAL NOT NULL,
+            reason TEXT NOT NULL,
+            ingredients_json TEXT NOT NULL DEFAULT '[]'
+        );
+        CREATE TABLE shopping_list_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            planning_cycle_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other',
+            already_have INTEGER NOT NULL DEFAULT 0,
+            optional INTEGER NOT NULL DEFAULT 0,
+            checked INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+    connection.commit()
+
+    initialize_database(connection)
+
+    users = UserRepository(connection)
+    profiles = ProfileRepository(connection)
+    schedules = ScheduleRepository(connection)
+    user_id = users.upsert_telegram_user(telegram_user_id=999)
+    profiles.save_profile(user_id, UserProfile())
+    schedules.save_schedule(user_id, PlanningSchedule())
+
+    assert profiles.get_profile(user_id) == UserProfile()
+    assert schedules.get_schedule(user_id) == PlanningSchedule()
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS)
