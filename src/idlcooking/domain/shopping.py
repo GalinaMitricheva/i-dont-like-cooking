@@ -75,6 +75,52 @@ def _parse_ingredient_line(text: str) -> tuple[str, str]:
     return stripped, ""
 
 
+def _strip_parenthetical_asides(text: str) -> str:
+    """Remove parenthetical asides such as "(minced)" or "(or more onion)".
+
+    Real scraped recipes commonly tack these onto the ingredient name; they don't
+    change what needs to be bought, so leaving them in causes near-duplicate
+    shopping list lines for what is really the same ingredient.
+    """
+    without_parens = re.sub(r"\([^)]*\)", "", text)
+    return re.sub(r"\s+", " ", without_parens).strip(" ,")
+
+
+def _singularize(word: str) -> str:
+    """Best-effort singularization of a single word for dedup purposes only.
+
+    Deliberately conservative: leaves short words and words ending in "ss"/"us"
+    alone (e.g. "hummus", "grass") to avoid mangling names that only happen to
+    end in "s".
+    """
+    lowered = word.lower()
+    if len(word) <= 3 or lowered.endswith(("ss", "us")):
+        return word
+    if lowered.endswith("ies"):
+        return word[:-3] + "y"
+    if lowered.endswith("oes"):
+        return word[:-2]
+    if lowered.endswith("s"):
+        return word[:-1]
+    return word
+
+
+def _matching_key(name: str) -> str:
+    """Normalize an ingredient name for deduplication across recipes.
+
+    Distinct from the display name: strips parenthetical asides and singularizes
+    only the last word, so "garlic clove" and "garlic cloves (minced)" merge into
+    one shopping list line while "garlic clove" and "garlic powder" (a genuinely
+    different thing to buy) do not.
+    """
+    cleaned = _strip_parenthetical_asides(name).lower()
+    words = cleaned.split(" ")
+    if not words or not words[0]:
+        return cleaned
+    words[-1] = _singularize(words[-1])
+    return " ".join(words)
+
+
 def _categorize(name: str) -> Category:
     # Word-boundary matching (rather than plain substring) avoids false positives like
     # "veggies" containing "egg", while `\w*` after the keyword still matches plurals
@@ -161,33 +207,34 @@ def build_shopping_list(
     menu: list[MenuItem],
     inventory: tuple[InventoryItem, ...] = (),
 ) -> list[ShoppingListItem]:
-    available = {item.name.lower() for item in inventory}
+    available = {_matching_key(item.name) for item in inventory}
     names: dict[str, str] = {}
     categories: dict[str, Category] = {}
     quantities: dict[str, list[str]] = {}
 
     for menu_item in menu:
         for ingredient_line in menu_item.recipe.ingredients:
-            name, quantity = _parse_ingredient_line(ingredient_line)
-            normalized = name.lower()
-            if not normalized:
+            raw_name, quantity = _parse_ingredient_line(ingredient_line)
+            name = _strip_parenthetical_asides(raw_name)
+            if not name:
                 continue
-            if normalized not in names:
-                names[normalized] = name
-                categories[normalized] = _categorize(name)
-                quantities[normalized] = []
+            key = _matching_key(name)
+            if key not in names:
+                names[key] = name
+                categories[key] = _categorize(name)
+                quantities[key] = []
             if quantity:
-                quantities[normalized].append(quantity)
+                quantities[key].append(quantity)
 
     needed = {
-        normalized: ShoppingListItem(
+        key: ShoppingListItem(
             name=name,
-            quantity=_combine_quantities(quantities[normalized]),
-            category=categories[normalized].value,
-            already_have=normalized in available,
-            optional=categories[normalized] == Category.SPICES_AND_SAUCES,
+            quantity=_combine_quantities(quantities[key]),
+            category=categories[key].value,
+            already_have=key in available,
+            optional=categories[key] == Category.SPICES_AND_SAUCES,
         )
-        for normalized, name in names.items()
+        for key, name in names.items()
     }
 
     return sorted(

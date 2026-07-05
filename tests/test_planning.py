@@ -1,6 +1,7 @@
 from idlcooking.domain.planning import (
     InventoryItem,
     MealType,
+    MenuItem,
     RecipeCandidate,
     select_weekly_menu,
 )
@@ -9,7 +10,9 @@ from idlcooking.domain.shopping import (
     Category,
     _categorize,
     _combine_quantities,
+    _matching_key,
     _parse_ingredient_line,
+    _strip_parenthetical_asides,
     build_shopping_list,
 )
 
@@ -289,6 +292,64 @@ def test_shopping_list_lists_quantities_separately_when_units_differ() -> None:
 
     by_name = {item.name: item for item in shopping_list}
     assert by_name["rice"].quantity == "2 cups + 1 tablespoon"
+
+
+def test_strip_parenthetical_asides_removes_trailing_and_embedded_notes() -> None:
+    assert _strip_parenthetical_asides("garlic cloves (minced)") == "garlic cloves"
+    assert _strip_parenthetical_asides("garlic powder (or more onion)") == "garlic powder"
+    assert _strip_parenthetical_asides("garlic powder (, optional but recommended)") == (
+        "garlic powder"
+    )
+    assert _strip_parenthetical_asides("carrot") == "carrot"
+
+
+def test_matching_key_merges_singular_plural_and_parenthetical_variants() -> None:
+    assert _matching_key("garlic clove") == _matching_key("garlic cloves (minced)")
+    assert _matching_key("eggs") == _matching_key("egg")
+    assert _matching_key("tomatoes") == _matching_key("tomato")
+
+
+def test_matching_key_keeps_genuinely_different_ingredients_apart() -> None:
+    # Garlic cloves and garlic powder are different things to buy; they must not merge.
+    assert _matching_key("garlic clove") != _matching_key("garlic powder")
+    assert _matching_key("hummus") == "hummus"  # not mangled into "hummu"
+    assert _matching_key("grass-fed beef") != _matching_key("grass")
+
+
+def test_build_shopping_list_merges_differently_worded_garlic_lines() -> None:
+    # Verbatim-style messy ingredient lines pulled from real recipe scrapes (issue #18).
+    def menu_item(ingredient: str, day_index: int) -> MenuItem:
+        return MenuItem(
+            day_index=day_index,
+            meal_type=MealType.DINNER,
+            recipe=RecipeCandidate(
+                title=f"Recipe {day_index}",
+                source_url=f"https://example.com/{day_index}",
+                ingredients=(ingredient,),
+                active_time_minutes=10,
+            ),
+            score=1.0,
+            reason="",
+        )
+
+    menu = [
+        menu_item("1 garlic clove", 0),
+        menu_item("2 garlic cloves (minced)", 1),
+        menu_item("1 teaspoon garlic powder", 2),
+        menu_item("1/2 tsp garlic powder (or more onion)", 3),
+    ]
+
+    shopping_list = build_shopping_list(menu)
+
+    by_name = {item.name: item for item in shopping_list}
+    # The two clove lines merge into one line (keeping the first-seen wording);
+    # the two powder lines merge into another. Cloves and powder stay separate
+    # since they're different things to buy.
+    assert set(by_name) == {"garlic clove", "garlic powder"}
+    # "clove"/"cloves" here is part of the ingredient name, not a recognized
+    # leading quantity unit, so the bare counts (1 + 2) sum unitless.
+    assert by_name["garlic clove"].quantity == "3"
+    assert by_name["garlic powder"].quantity == "1 teaspoon + 1/2 tsp"
 
 
 def test_breakfast_prefers_recipes_tagged_breakfast() -> None:
