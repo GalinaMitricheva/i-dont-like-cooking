@@ -607,20 +607,55 @@ def test_accepting_a_cycle_stamps_accepted_at() -> None:
     assert facade.cycles.get_latest_cycle(user_id)["accepted_at"] is not None
 
 
+def _accept_at(facade: TelegramPlanningFacade, telegram_user_id: int, accepted_at: datetime) -> int:
+    """Accept the user's latest plan, pinning accepted_at to a fixed instant for tests."""
+    facade.accept_latest_cycle(telegram_user_id=telegram_user_id)
+    user_id = facade.users.get_user_id_by_telegram_id(telegram_user_id)
+    cycle_id = facade.cycles.get_latest_cycle_id(user_id)
+    facade.connection.execute(
+        "UPDATE planning_cycles SET accepted_at = ? WHERE id = ?",
+        (accepted_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S"), cycle_id),
+    )
+    facade.connection.commit()
+    return cycle_id
+
+
+# Midday UTC keeps the default Europe/Berlin local time (13:00–14:00) inside the
+# 07:00–20:00 send window and well away from any date boundary, so the day math is stable.
+_ACCEPTED = datetime(2026, 7, 4, 12, 0, tzinfo=UTC)
+
+
 def test_feedback_is_not_due_until_the_day_after_the_period_ends() -> None:
     # Issue #37/#38: 3-day plan runs A+1..A+3; the request is due on A+4.
     facade = _offline_facade()
     facade.generate_plan_from_text_inventory(
         telegram_user_id=1, days=3, include_dinner_leftovers=False
     )
-    facade.accept_latest_cycle(telegram_user_id=1)
-    now = datetime.now(UTC)
+    _accept_at(facade, 1, _ACCEPTED)
 
-    assert facade.get_users_due_for_feedback(now) == []
-    assert facade.get_users_due_for_feedback(now + timedelta(days=3)) == []
+    assert facade.get_users_due_for_feedback(_ACCEPTED) == []
+    assert facade.get_users_due_for_feedback(_ACCEPTED + timedelta(days=3)) == []
 
-    due = facade.get_users_due_for_feedback(now + timedelta(days=4))
+    due = facade.get_users_due_for_feedback(_ACCEPTED + timedelta(days=4))
     assert [telegram_user_id for telegram_user_id, _ in due] == [1]
+
+
+def test_feedback_request_only_sends_within_local_daytime_hours() -> None:
+    # Must not ping before 07:00 or after 20:00 local time; a request that comes due
+    # outside that window waits for the next in-window poll.
+    facade = _offline_facade()
+    facade.generate_plan_from_text_inventory(
+        telegram_user_id=1, days=2, include_dinner_leftovers=False
+    )
+    _accept_at(facade, 1, _ACCEPTED)
+    due_day = _ACCEPTED + timedelta(days=5)  # period long over; only the hour matters now
+
+    # 03:00 UTC -> ~04:00–05:00 Berlin (before 07:00) -> hold.
+    assert facade.get_users_due_for_feedback(due_day.replace(hour=3)) == []
+    # 21:30 UTC -> ~22:30–23:30 Berlin (after 20:00) -> hold.
+    assert facade.get_users_due_for_feedback(due_day.replace(hour=21, minute=30)) == []
+    # Midday -> inside the window -> send.
+    assert [uid for uid, _ in facade.get_users_due_for_feedback(due_day)] == [1]
 
 
 def test_feedback_request_is_not_repeated_once_marked() -> None:
@@ -628,8 +663,8 @@ def test_feedback_request_is_not_repeated_once_marked() -> None:
     facade.generate_plan_from_text_inventory(
         telegram_user_id=1, days=2, include_dinner_leftovers=False
     )
-    facade.accept_latest_cycle(telegram_user_id=1)
-    later = datetime.now(UTC) + timedelta(days=5)
+    _accept_at(facade, 1, _ACCEPTED)
+    later = _ACCEPTED + timedelta(days=5)
 
     due = facade.get_users_due_for_feedback(later)
     assert len(due) == 1

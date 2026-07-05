@@ -39,13 +39,16 @@ async def run_due_planning_cycles(bot: Bot, planning_facade: TelegramPlanningFac
             )
 
 
-async def send_due_feedback_requests(bot: Bot, planning_facade: TelegramPlanningFacade) -> None:
+async def send_due_feedback_requests(
+    bot: Bot, planning_facade: TelegramPlanningFacade, now: datetime | None = None
+) -> None:
     """Ask for feedback the day after a plan's period ends (issue #37).
 
     Runs independently of planning: the request targets the specific finished cycle, and
     is only marked sent after a successful send so a failure retries on the next tick.
+    Requests are only issued within friendly local hours (see get_users_due_for_feedback).
     """
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     for telegram_user_id, planning_cycle_id in planning_facade.get_users_due_for_feedback(now):
         try:
             language = planning_facade.get_language(telegram_user_id)

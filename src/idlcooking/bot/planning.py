@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 CONSENT_VERSION = "v1"
 
+# Automatic feedback requests are only sent within these local hours, so a request that
+# comes due overnight waits until a reasonable time rather than pinging at, say, 3 AM.
+FEEDBACK_REQUEST_EARLIEST = time(7, 0)
+FEEDBACK_REQUEST_LATEST = time(20, 0)
+
 _CATEGORY_LABELS: dict[str, str] = {
     "produce": "Produce",
     "protein": "Protein",
@@ -341,6 +346,11 @@ class TelegramPlanningFacade:
         feedback request is due once at least N+1 days have passed since acceptance —
         i.e. the day after the last planned day. Measured in each user's schedule
         timezone. Cycles that already had a request are excluded by the query.
+
+        Sending is additionally confined to friendly local hours
+        (``FEEDBACK_REQUEST_EARLIEST``..``FEEDBACK_REQUEST_LATEST``): a request that
+        comes due outside that window simply waits — it stays pending and goes out on
+        the next poll that lands inside the window.
         """
         now = now or datetime.now(UTC)
         due: list[tuple[int, int]] = []
@@ -354,11 +364,14 @@ class TelegramPlanningFacade:
                 continue
             schedule = self.schedules.get_schedule(int(row["user_id"])) or PlanningSchedule()
             zone = ZoneInfo(schedule.timezone)
+            local_now = now.astimezone(zone)
             accepted_date = (
                 datetime.fromisoformat(str(accepted_at)).replace(tzinfo=UTC).astimezone(zone).date()
             )
-            days_since_accept = (now.astimezone(zone).date() - accepted_date).days
-            if days_since_accept >= total_days + 1:
+            days_since_accept = (local_now.date() - accepted_date).days
+            if days_since_accept >= total_days + 1 and (
+                FEEDBACK_REQUEST_EARLIEST <= local_now.time() <= FEEDBACK_REQUEST_LATEST
+            ):
                 due.append((int(row["telegram_user_id"]), cycle_id))
         return due
 
